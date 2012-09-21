@@ -1,0 +1,75 @@
+
+# Command structure specification
+#   <COMMAND> <SUBCOMMAND> <HELPSTRING> <POSTEXECUTIONHELP> <WSLCOMMAND>
+
+export vCommands=(
+ "attribute" "all" "Enumerate all attributes" ""
+      "wsl enum CIM_BIOSAttribute"
+
+ "attribute" "str" "Enumerate all string attributes" ""
+      "wsl enum CIM_BIOSString"
+
+ "attribute" "int" "Enumerate all integer attributes" ""
+      "wsl enum CIM_BIOSInteger"
+
+ "attribute" "enum" "Enumerate all enumeration attributes" ""
+      "wsl enum CIM_BIOSEnumeration"
+
+ "view" "blades" "List blade server views" ""
+      "wsl enum CIM_View -filter \"select * from DCIM_BladeServerView\""
+
+ "view" "modular" "List modular chassis views" ""
+      "wsl enum CIM_View -filter \"select * from DCIM_ModularChassisView\""
+
+ "user" "list" "List local user accounts" ""
+      "wsl enum CIM_Account -filter 'select Name,EnabledState,UserID from CIM_Account'"
+
+ "alert" "email list" "List Email Alert setting. (ARGS) setting index (1...4)" ""
+      "wsl enum DCIM_iDRACCardAttribute -filter \"select * from DCIM_iDRACCardAttribute where InstanceID like '%EmailAlert.XX%'\""
+
+ "alert" "filter list" "List all Alert Filters" ""
+      "wsl enum DCIM_EventFilter"
+
+ "alert" "filter get" "Get an Alert Filter. (ARGS) Category, SubCategory" ""
+      "wsl enum DCIM_EventFilter -filter \"select * from DCIM_EventFilter where Category='XX' and SubCategory like '%XX%'\""
+
+ "alert" "smtp list" "List Alert SMTP setting" ""
+      "wsl enum DCIM_iDRACCardString -filter \"select * from DCIM_iDRACCardString where InstanceID like '%SMTPServerIPAddress'\""
+
+ "bios" "assettag" "Get Asset Tag value" ""
+      "wsl enum DCIM_BIOSString -filter \"select * from DCIM_BIOSString where AttributeName='AssetTag'\""
+
+ "bootm" "settings" "Get blade boot sequence setting and isnext setting. (ARGS) blade index" ""
+      "wsl enum Dell_BootConfigSetting -mode epr -filter \"select * from Dell_BootConfigSetting where InstanceID like '%XX%'\" ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml bladebcs.xml ; wsl enum Dell_BootConfigSetting -references -inst bladebcs.xml"
+
+ "identify" "" "Check if a target has WSMAN service" ""
+      "wsl id check"
+
+ "job" "getall" "Enumerate all Job instances" ""
+      "wsl enum DCIM_LifecycleJob"
+
+ "job" "get" "Get a specific Job instance. (ARGS) JobID" ""
+      "wsl get DCIM_LifecycleJob InstanceID=XX"
+
+ "power" "extmgmt" "Get the properties of server-based power management" ""
+      "wsl enum CIM_View -filter 'select ServerBasedPowerMgmtEnabled,ServerBasedPowerMgmtEnableTime from DCIM_ModularChassisView'"
+
+ "power" "capability" "Get power management capabilities." ""
+      "wsl enum CIM_PowerManagementCapabilities -filter \"select PowerChangeCapabilities,PowerStatesSupported from CIM_PowerManagementCapabilities\""
+
+ "power" "capability2" "Get computer system power capabilities." ""
+      "wsl enum CIM_EnabledLogicalElementCapabilities -filter \"select RequestedStatesSupported from CIM_EnabledLogicalElementCapabilities\""
+
+ "power" "state" "Get power management state. Use this first before power changes" ""
+      "wsl enum CIM_AssociatedPowerManagementService -filter \"select PowerState,UserOfService,OtherPowerState from CIM_AssociatedPowerManagementService\""
+
+ "power" "state2" "Get computer system power state (CS profile). Use this first before power changes" ""
+      "wsl enum CIM_ComputerSystem -filter \"select EnabledState from CIM_ComputerSystem\""
+
+ "power" "pt state" "Get passthrough module power state." ""
+      "wsl enum CIM_PassThroughModule -filter \"select EnabledState from CIM_PassThroughModule\""
+
+ "power" "redundancy" "Get power redundancy state." "Search for AffectingElement=1. AC redundancy if associated with Dell_ACRedundancySet, DC redundancy if associated with Dell_DCRedundancySet, no redundancy otherwise."
+      "wsl enum Dell_OrderedSvcAffectsElement"
+)
+

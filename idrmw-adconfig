@@ -1,0 +1,128 @@
+#!/bin/bash
+# ###########################################################################
+# Copyright (c) 2011, Dell Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+#
+#    * Redistributions of source code must retain the above copyright
+#      notice, this list of conditions and the following disclaimer.
+#    * Redistributions in binary form must reproduce the above copyright
+#      notice, this list of conditions and the following disclaimer in the
+#      documentation and/or other materials provided with the distribution.
+#    * Neither the name of the Dell, Inc. nor the names of its contributors
+#      may be used to endorse or promote products derived from this software
+#      without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL Dell, Inc. BE LIABLE FOR ANY DIRECT,
+# INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+# HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+# STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+# IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+# ###########################################################################
+# Authors: Chris A. Poblete
+# Version: 1.0.0
+# ###########################################################################
+
+MYNAME=`basename $0`
+MYPATH=${0%/*}
+[ -e "${MYPATH}/wsl-functions" ] && . ${MYPATH}/wsl-functions
+
+export WSENUMOPTIMIZE=1
+export WSENUMMAXELEM=512
+
+fTimerInit
+
+usage() {
+  ${WSCOLORERR}
+  cat <<EOF
+DRMW
+Dell Remote Management Workflow client, version 0.1.0
+
+USAGE: ${MYNAME} [OPTIONS]
+
+[OPTIONS]
+-get INIFILE        - get the current values of attributes in INI
+-set INIFILE        - set new value for attributes specified in INI
+-commit             - commit pending changes from set
+-cancel             - cancel pending changes
+
+Requires: wsl.
+EOF
+  ${WSCOLORNORM}
+  exit 1
+}
+
+unset ACTION
+
+[ ! -e "wsl" ] && [ ! -e "${MYPATH}/wsl" ] && echo "ERROR: failed to find wsl toolset!!!" && usage
+[ $# -lt 1 ] && usage
+while [ ! -z "$1" ]; do
+  case "$1" in
+    -h|-help ) usage
+      ;;
+    -g|-get ) ACTION=1 ; shift ; INIFILE="$1"
+      ;;
+    -s|-set ) ACTION=2 ; shift ; INIFILE="$1"
+      ;;
+    -co|-commit ) ACTION=3
+      ;;
+    -ca|-cancel ) ACTION=4
+      ;;
+    * )
+      [ -z "${WSENDPOINT}" ] && export WSENDPOINT="$1" && shift && continue
+      [ -z "${WSUSER}" ] && export WSUSER="$1" && shift && continue
+      [ -z "${WSPASS}" ] && export WSPASS="$1" && shift && continue
+      ;;
+  esac
+  shift
+done
+
+WSL="${MYPATH}/wsl"
+
+case "${ACTION}" in
+  3 ) ${WSL} invoke DCIM_iDRACCardService CreateTargetedConfigJob Target='iDRAC.Embedded.1' RebootIfRequired='false' ScheduledStartTime='TIME_NOW'
+      exit 0
+      ;;
+  4 ) ${WSL} invoke DCIM_iDRACCardService DeletePendingConfiguration Target='iDRAC.Embedded.1'
+      exit 0
+      ;;
+  * ) [ -z "${INIFILE}" ] || [ ! -e "${INIFILE}" ] && echo "Can't find valid INI file" && usage
+      ;;
+esac
+
+unset ARGS
+flag=0
+
+while read -e line ; do
+   Name=$(echo ${line} | cut -d= -f1)
+   Value=$(echo ${line} | cut -d= -f2-)
+   if [ ${ACTION} -eq 2 ]; then
+     ARGS="${ARGS} AttributeName=${Name} AttributeValue=\"${Value}\""
+   else
+     [ ${flag} -eq 1 ] && FILT="${FILT} or"
+     [ ${flag} -ne 1 ] && flag=1
+     FILT="${FILT} InstanceID like '%${Name}%'"
+   fi
+done < ${INIFILE}
+
+if [  ${ACTION} -eq 2 ]; then
+  bash -c "${WSL} invoke DCIM_iDRACCardService SetAttributes Target='iDRAC.Embedded.1' ${ARGS}"
+else
+  wsl enum DCIM_iDRACCardAttribute -filter "select * from DCIM_iDRACCardAttribute where ${FILT}"
+fi
+
+exit 0
+
+# ###########################################################################
+# End of Code
+# ###########################################################################
+

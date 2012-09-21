@@ -1,0 +1,187 @@
+#!/bin/bash
+# ###########################################################################
+# Copyright (c) 2011, Dell Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+#
+#    * Redistributions of source code must retain the above copyright
+#      notice, this list of conditions and the following disclaimer.
+#    * Redistributions in binary form must reproduce the above copyright
+#      notice, this list of conditions and the following disclaimer in the
+#      documentation and/or other materials provided with the distribution.
+#    * Neither the name of Dell Inc. nor the names of its contributors
+#      may be used to endorse or promote products derived from this software
+#      without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL DELL INC. BE LIABLE FOR ANY DIRECT,
+# INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+# HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+# STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+# IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+# ###########################################################################
+# Authors: Chris A. Poblete
+# Version: 1.0.0
+# ###########################################################################
+
+# ***********************************************************
+# ***********************************************************
+# *****                                                 *****
+# *****                 S  T  O  P !!                   *****
+# *****                                                 *****
+# ***** There is no user configurable part in this file *****
+# *****                                                 *****
+# ***********************************************************
+# ***********************************************************
+
+MYVERSION="0.1.0"
+MYNAME=`basename $0`
+MYPATH=${0%/*}
+export NODATEDUMP=1
+[ -e "${MYPATH}/wsl-functions" ] && . ${MYPATH}/wsl-functions
+
+
+MYCONFIG="${MYNAME}-cmds"
+[ -e "${MYPATH}/${MYCONFIG}" ] && . ${MYPATH}/${MYCONFIG}
+[ -e "~/${MYCONFIG}" ] && . ~/.${MYCONFIG}
+[ -e "./${MYCONFIG}" ] && . ./${MYCONFIG}
+ 
+usage() {
+  if [ ! -z "${ucm1}" ]; then
+    count=${#vCommands[*]} ; count=$((count / 5))
+    for (( index = 0; index < ${count}; index++ )); do
+      cs1=$((index * 5 + 0))
+      cs2=$((index * 5 + 1))
+      echo "${vCommands[$cs1]}" | grep "^${ucm1}" >/dev/null 2>&1
+      [ $? -eq 0 ] && filter1="${ucm1}" && break
+    done
+  fi
+
+  ${WSCOLORERR}
+
+  case "${MYNAME}" in
+    "idrm" )
+       echo "Do not run idrm directly. Instead run ireport or iconfig"
+       ${WSCOLORNORM}
+       exit 1
+       ;;
+    "ireport" )
+       echo "Reporting of managed data properties"
+       ;;
+    "iconfig" )
+       echo "Configuration of managed data properties"
+       ;;
+    * )
+       echo "UNKNOWN"
+       ;;
+  esac
+
+  cat <<EOF
+iDRAC Web Service Interface (WSMAN) Client, version ${MYVERSION}
+
+USAGE: $MYNAME COMMAND SUBCOMMAND [SUBCOMMAND2] [PARAMS ...]
+
+EOF
+  if [ -z "${filter1}" ]; then
+    echo "List of COMMANDs. Specify command to get more help on subcommands."
+  else
+    echo "List of COMMAND SUBCOMMAND [SUBCOMMAND2] and Description:"
+  fi
+  if [ -z "${vCommands}" ]; then
+    cat <<EOF
+!!! config file "${MYCONFIG}" needed by this tool not found !!!
+
+This file should have been included with the tool package and must be
+in the current path or tool path or in the home directory with a dot
+prefix. If you can't find it, try extracting the package again.
+EOF
+  else
+    count=${#vCommands[*]} ; count=$((count / 5))
+    unset laststr
+    for (( index = 0; index < ${count}; index++ )); do
+      cs1=$((index * 5 + 0))
+      cs2=$((index * 5 + 1))
+      dsc=$((index * 5 + 2))
+      unset lstat
+      if [ ! -z "${filter1}" ]; then
+        echo "${vCommands[$cs1]}" | grep "^${filter1}" >/dev/null 2>&1
+        [ $? -ne 0 ] && lstat=$?
+      else
+        if [ "${laststr}" != "${vCommands[$cs1]}" ]; then
+          laststr="${vCommands[$cs1]}"
+        else
+          lstat=1
+        fi
+      fi
+      if [ -z "${lstat}" ]; then
+        if [ -z "${filter1}" ]; then
+          echo "  ${vCommands[$cs1]}"
+        else
+          echo "  ${vCommands[$cs1]} ${vCommands[$cs2]} - ${vCommands[$dsc]}"
+        fi
+      fi
+    done
+  fi
+  cat <<EOF
+
+Requires: wsl.
+EOF
+  ${WSCOLORNORM}
+  exit 1
+}
+
+[ ! -e "wsl" ] && [ ! -e "${MYPATH}/wsl" ] && echo "ERROR: failed to find wsl toolset!!!" && usage
+
+[ $# -lt 1 ] && usage
+ucm1=$1; shift
+ucm2b="$1 $2"
+ucm2=$1; shift
+
+uargs=()
+count=0
+for item in "$@"; do
+  uargs[$count]="${item}"
+  count=$((count + 1))
+done
+
+[ -z "${vCommands}" ] && usage
+
+count=${#vCommands[*]} ; count=$((count / 5))
+for (( index = 0; index < ${count}; index++ )); do
+  cs1=$((index * 5 + 0))
+  cs2=$((index * 5 + 1))
+  reminder=$((index * 5 + 3))
+  cmd=$((index * 5 + 4))
+  flag=-1
+  [ "${ucm1}" = "${vCommands[$cs1]}" -a "${ucm2}" = "${vCommands[$cs2]}" ] && flag=0
+  [ "${ucm1}" = "${vCommands[$cs1]}" -a "${ucm2b}" = "${vCommands[$cs2]}" ] && flag=1
+  if [ ${flag} -ge 0 ]; then
+    ecmd="${vCommands[$cmd]}"
+    reminder="${vCommands[$reminder]}"
+    for (( uindex = ${flag}; uindex < ${#uargs[*]}; uindex++ )); do
+      item=${uargs[$uindex]}
+      ecmd=$(echo "${ecmd}" | sed "s/XX/${item}/")
+    done
+    fGetTarget
+    export WSAUTOMATED=1
+    [ ${OUTLEVEL} -ge 2 ] && echo "${ecmd}"
+    bash -c "${MYPATH}/${ecmd}" ; STAT=$?
+    echo -e "${reminder}"
+    break
+  fi
+done
+[ -z "${ecmd}" ] && usage
+
+exit ${STAT}
+
+# ###########################################################################
+# End of Code
+# ###########################################################################

@@ -1,0 +1,400 @@
+#!/bin/bash
+# ###########################################################################
+# Copyright (c) 2011, Dell Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+#
+#    * Redistributions of source code must retain the above copyright
+#      notice, this list of conditions and the following disclaimer.
+#    * Redistributions in binary form must reproduce the above copyright
+#      notice, this list of conditions and the following disclaimer in the
+#      documentation and/or other materials provided with the distribution.
+#    * Neither the name of the Dell, Inc. nor the names of its contributors
+#      may be used to endorse or promote products derived from this software
+#      without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL Dell, Inc. BE LIABLE FOR ANY DIRECT,
+# INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+# HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+# STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+# IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+# ###########################################################################
+# Authors: Chris A. Poblete
+# Version: 1.0.0
+# ###########################################################################
+
+MYNAME=`basename $0`
+MYPATH=${0%/*}
+[ -e "${MYPATH}/wsl-functions" ] && . ${MYPATH}/wsl-functions
+
+export WSENUMOPTIMIZE=1
+export WSENUMMAXELEM=512
+
+fTimerInit
+
+usage() {
+  ${WSCOLORERR}
+  cat <<EOF
+DRMW
+Dell Remote Management Workflow client, version 0.1.0
+
+USAGE: ${MYNAME} IPAddress Username [Password] [OPTIONS]
+
+[OPTIONS]
+-express            - select default for all user questions
+-nocsior            - disable CSIOR at the end of process, default=enable
+-noidracreset       - disable iDRAC reset, default=enable
+
+Requires: wsl.
+EOF
+  ${WSCOLORNORM}
+  exit 1
+}
+
+unset vExpress vNoMCreset vNocsior
+
+[ ! -e "wsl" ] && [ ! -e "${MYPATH}/wsl" ] && echo "ERROR: failed to find wsl toolset!!!" && usage
+[ $# -lt 2 ] && usage
+while [ ! -z "$1" ]; do
+  case "$1" in
+    -h|-help ) usage
+      ;;
+    -e|-express ) vExpress=1
+      ;;
+    -noidracreset ) vNoMCreset=1
+      ;;
+    -nocsior ) vNocsior=1
+      ;;
+    * )
+      [ -z "${WSENDPOINT}" ] && export WSENDPOINT="$1" && shift && continue
+      [ -z "${WSUSER}" ] && export WSUSER="$1" && shift && continue
+      [ -z "${WSPASS}" ] && export WSPASS="$1" && shift && continue
+      ;;
+  esac
+  shift
+done
+
+vWorkingdir="${WSENDPOINT}-report"
+
+saveresponse() {
+  name=$1
+  lookfor=$2
+  lookfor2=$3
+  export CURRENTXML="${name}.xml"
+# [ -e "${CURRENTXML}" ] && warning "${CURRENTXML} exist and to be overwritten"
+  /bin/mv -f "${RETURNFILE}" "${CURRENTXML}"
+  note "response file is ${CURRENTXML}"
+  [ ! -z "${lookfor}" ] && fGetValueOf ${CURRENTXML} "${lookfor}" "${lookfor2}"
+}
+error() {
+  echo -e "\n#ERROR: $1\n"
+  cd -
+  fTimerPrint
+  exit 1
+}
+warning() {
+  echo -e "\n#WARNING: $1\n"
+}
+note() {
+  echo -e "\n### $1\n"
+}
+checkjobdone() {
+  statusval="$1"
+  export JDONE=1
+  llower=$(echo "${statusval}" | awk '{print tolower($0)}')
+  [[ "${llower}" =~ "new" ]] && return
+  [[ "${llower}" =~ "scheduled" ]] && return
+  [[ "${llower}" =~ "ready" ]] && return
+  [[ "${llower}" =~ "running" ]] && return
+  [[ "${llower}" =~ "downloading" ]] && return
+  [[ "${llower}" =~ "pending" ]] && return
+  export JDONE=0
+}
+vRunJobIdx=1
+pollforjobdone() {
+  vSrcLineNo=$1
+  vJobID="$2"
+  vPollInterval=$3
+  count=0
+  while true; do
+    note "$LINENO: Polling for Job ${vJobID} completion" ; wclget DCIM_LifecycleJob InstanceID=${vJobID}
+    saveresponse "runjob-${vRunJobIdx}" 'JobStatus'
+    checkjobdone "${PVALUE}"
+    [ ${JDONE} -eq 0 ] && note "$LINENO: Job done." && break
+    count=$((count + 1)) ; [ ${count} -gt ${vPollInterval} ] && error "${vSrcLineNo}: Wait for Job ${vJobID} completion timeout, check logs"
+    read -t 60 -n 1 -p "# ${vSrcLineNo}: Operation repeats until Job status becomes complete, press ENTER to stop wait..."
+    echo
+  done
+
+  count=0
+  while true; do
+    note "$LINENO: Polling RSStatus until ready" ; wclinvoke DCIM_LCService GetRSStatus
+    saveresponse "runstat-${vRunJobIdx}"
+	fGetValueOf ${CURRENTXML} "Status"
+	[ -z "${PVALUE}" ] && fGetValueOf ${CURRENTXML} "DMStatus"
+    echo "${PVALUE}" | grep -i "^ready" >/dev/null 2>&1
+    [ $? -eq 0 ] && note "$LINENO: RSStatus is Ready." && break
+    count=$((count + 1)) ; [ ${count} -gt 6 ] && error "${vSrcLineNo}: Wait for RSStatus response timeout, check logs"
+    read -t 30 -n 1 -p "# ${vSrcLineNo}: Operation repeats until status is Ready, press ENTER to stop wait..."
+    echo
+  done
+
+  vRunJobIdx=$((vRunJobIdx + 1))
+  return
+}
+
+if [ -z "${vExpress}" ]; then
+cat <<EOF
+
+**************************************************************************
+This script configures the first boot device of the servier to HardDisk
+using the Web Services interface (WSMAN) of Lifecycle Controller in iDRAC.
+
+See the LICENSE file for license and agreement about running this script.
+
+The following steps will be performed:
+1.  Check first boot device setting, If set to Harddrive then stop.
+2.  Get basic system inventory for analysis if needed later.
+3.  Check system health. If in bad state then stop.
+4.  Power off the system and reset iDRAC to get to clean state.
+5.  Clears all iDRAC jobs.
+6.  Enable CSIOR and power on the system for CSIOR to run.
+7.  Set first boot device to Harddisk
+8.  System reboot for changes to apply in System Services.
+9.  Changes are done and verified.
+10. Optionally Disable CSIOR and schedule a reboot.
+11. Done
+
+The following tools are required for this script to run:
+wget, xmllint, awk, sed
+
+The entire process may take several minutes to complete in which
+during this time, the system should not be used (i.e. downtime).
+
+For non-interactive execution, use -express option.
+**************************************************************************
+
+EOF
+unset response
+read -t 120 -n 1 -p "Do you wish to proceed? [y|N] " response
+[ ! "${response}" = "y" -a ! "${response}" = "Y" ] && echo -e "\nAbort." && exit 1
+fi
+
+[ ! -d ${vWorkingdir} ] && /bin/mkdir ${vWorkingdir}
+
+echo "${WSUSER}" | grep "^FILE:" >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+  credfile=$(echo "${WSUSER}" | sed 's/^FILE://')
+  /bin/cp "${credfile}" ${vWorkingdir}
+fi  
+
+cd ${vWorkingdir}
+date >${LOGFILE}
+
+fCheckReqsOrUsage wget
+fCheckReqsOrUsage xmllint
+fCheckReqsOrUsage awk
+fCheckReqsOrUsage sed
+
+note "$LINENO: Checking for boot order setting"
+
+wclenum DCIM_BootConfigSetting  -mode epr  && saveresponse "bootcfg-1a"
+fSearchValueOf ${CURRENTXML} 1 Selector InstanceID IPL ; vIPLID=${PVALUE}
+[ -z "${vIPLID}" ] && error "$LINENO: failed to get IPL key from instance, check logs"
+wclget DCIM_BootConfigSetting InstanceID=${vIPLID} && saveresponse "bootcfg-1b"
+
+wclenum DCIM_BootSourceSetting  -mode epr  && saveresponse "bootsrc-1a"
+fSearchValueOf ${CURRENTXML} 1 Selector InstanceID HardDisk ; vHDID=${PVALUE}
+[ -z "${vHDID}" ] && error "$LINENO: failed to get HDD key from instance, check logs"
+wclget DCIM_BootSourceSetting InstanceID=${vHDID} && saveresponse "bootsrc-1b"
+fGetValueOf ${CURRENTXML} "CurrentAssignedSequence" ; vSeq=${PVALUE}
+fGetValueOf ${CURRENTXML} "CurrentEnabledStatus" ; vEnabled=${PVALUE}
+
+if [ -z "${vSeq}" ] || [ -z "${vEnabled}" ]; then
+  error "$LINENO: failed to get Sequence or EnabledStatus keys from instance, check logs"
+fi
+
+wclenum DCIM_BIOSEnumeration -filter "select * from DCIM_BIOSEnumeration where AttributeName='BootMode'"
+saveresponse "bootmode-1a" "CurrentValue" ; vBootMode=${PVALUE}
+echo "${vBootMode}" | grep -i "bios" >/dev/null 2>&1 ; vBootMode=$?
+
+if [ ${vSeq} -eq 0 ] && [ ${vEnabled} -eq 1 ] && [ ${vBootMode} -eq 0 ]; then
+  echo; note "$LINENO: IPL:HardDisk is already configured as first boot device, and Boot mode is BIOS.\n"
+  cd -
+  fTimerPrint
+  exit 0
+fi
+
+note "$LINENO: Proceeding to set boot order to ${vHDID}"
+if [ -z "${vExpress}" ]; then
+  unset response
+  read -t 60 -n 1 -p "Do you wish to proceed? [y|N] " response
+  echo -e "\n"
+  [ ! "${response}" = "y" -a ! "${response}" = "Y" ] && echo -e "\nAbort." && exit 1
+fi
+
+note "$LINENO: Getting RSStatus" ; wclinvoke DCIM_LCService GetRSStatus && saveresponse "rsstatus-1"
+note "$LINENO: Getting SystemView" ; wclenum DCIM_SystemView && saveresponse "systemview-1"
+note "$LINENO: Getting iDRACView" ; wclenum DCIM_iDRACCardView && saveresponse "idracview-1"
+note "$LINENO: Getting SWInventory" ; wclenum DCIM_SoftwareIdentity && saveresponse "swinventory-1"
+
+note "$LINENO: Getting HealthState" 
+wclenum CIM_ComputerSystem -filter "select * from CIM_ComputerSystem where Name='srv:system'" ; STAT=$?
+[ ${STAT} -ne 0 ] && error "$LINENO: Failed to get Host ComputerSystem instance"
+saveresponse "hostcs-1" "HealthState"
+fGetValueOf ${CURRENTXML} "EnabledState" ; vEnabled=${PVALUE}
+[ -z "${vEnabled}" ] && error "$LINENO: failed to get HealthState key from instance, check logs"
+[ ${vEnabled} -gt 15 ] && warning "$LINENO: Bad system health ${vEnabled} reported - may prevent normal operation, check logs"
+
+note "$LINENO: System power off"
+if [ ${vEnabled} -eq 2 ]; then
+  wclinvoke CIM_ComputerSystem -filter "select * from CIM_ComputerSystem where Name='srv:system'" RequestStateChange RequestedState=3
+  saveresponse "poweroff-1a" "ReturnValue"
+  [ -z "${PVALUE}" ] || [ ${PVALUE} -ne 0 ] && error "$LINENO: Failed to power off the system, check logs"
+  read -t 60 -n 1 -p "# $LINENO: Waiting 1 minute for OS to shutdown, press ENTER to stop wait..."
+else
+  echo "system is not enabled."
+  read -t 30 -n 1 -p "# $LINENO: system not enabled, pausing 30 secs or press ENTER to stop wait..."
+fi
+echo
+
+if [ ! -z "${vNoMCreset}" ]; then
+  note "$LINENO: iDRAC reset"
+  wclinvoke CIM_ComputerSystem -filter "select * from CIM_ComputerSystem where Name='systemmc'" RequestStateChange RequestedState=11
+  saveresponse "poweroff-1b" "ReturnValue"
+  [ -z "${PVALUE}" ] || [ ${PVALUE} -ne 0 ] && error "$LINENO: Failed to reset iDRAC, check logs"
+
+  read -t 120 -n 1 -p "# $LINENO: Waiting 2 minutes for iDRAC reset to complete, press ENTER to stop wait..."
+  echo
+
+  count=0
+  while true; do
+    note "$LINENO: Getting RSStatus" ; wclinvoke DCIM_LCService GetRSStatus ; STAT=$?
+    [ ${STAT} -eq 0 ] && break
+    count=$((count + 1)) ; [ ${count} -gt 6 ] && error "$LINENO: Wait for RSStatus response timeout, check logs"
+    read -t 30 -n 1 -p "# $LINENO: Operation repeats until iDRAC responds, press ENTER to stop wait..."
+    echo
+  done
+fi
+
+note "$LINENO: Delete all jobs"
+wclinvoke DCIM_JobService DeleteJobQueue JobID=JID_CLEARALL
+saveresponse "deletejobs" "ReturnValue"
+[ -z "${PVALUE}" ] || [ ${PVALUE} -ne 0 ] && error "$LINENO: Failed to delete all jobs, check logs"
+
+note "$LINENO: Delete pending BIOS config"
+wclinvoke DCIM_BIOSService DeletePendingConfiguration Target="BIOS.Setup.1-1"
+saveresponse "deletebiosconfig"
+
+note "$LINENO: Enable CSIOR"
+wclinvoke DCIM_LCService SetAttribute AttributeName="Collect System Inventory on Restart" AttributeValue=Enabled
+saveresponse "csior-1"
+wclinvoke DCIM_LCService CreateConfigJob ScheduledStartTime='00000000000000.000000:000' RebootIfRequired=false
+saveresponse "lcjob-1" "Selector" "InstanceID" ; vCsiorJob=${PVALUE}
+wclget DCIM_LifecycleJob InstanceID=${vCsiorJob}
+[ $? -ne 0 ] && error "$LINENO: Failed to enable CSIOR, check logs"
+
+note "$LINENO: System power on"
+wclinvoke CIM_ComputerSystem -filter "select * from CIM_ComputerSystem where Name='srv:system'" RequestStateChange RequestedState=2
+saveresponse "poweron-1a" "ReturnValue"
+[ -z "${PVALUE}" ] || [ ${PVALUE} -ne 0 ] && error "$LINENO: Failed to power on the system, check logs"
+
+# wait for job done and rsstatus ready
+pollforjobdone $LINENO "${vCsiorJob}" 15
+
+note "$LINENO: Getting BIOS attributes and BootSource setting"
+wclenum DCIM_BIOSEnumeration && saveresponse "bios-1a"
+wclenum DCIM_BIOSString && saveresponse "bios-1b"
+wclenum DCIM_BIOSInteger && saveresponse "bios-1c"
+
+note "$LINENO: Setting boot order to ${vHDID}"
+wclinvoke DCIM_BootConfigSetting ChangeBootOrderByInstanceID source=${vHDID}
+saveresponse "chgboot-1a" "ReturnValue" ; note "$LINENO: ChangeBootOrderByInstanceID status=${PVALUE}"
+wclinvoke DCIM_BootConfigSetting ChangeBootSourceState source=${vHDID} EnabledState=1
+saveresponse "chgboot-1b" "ReturnValue" ; note "$LINENO: ChangeBootSourceState status=${PVALUE}"
+
+note "$LINENO: Setting boot mode to BIOS"
+wclinvoke DCIM_BIOSService SetAttribute Target="BIOS.Setup.1-1" AttributeName=BootMode AttributeValue=Bios
+saveresponse "chgbootbios-1a" "Message" ; note "$LINENO: SetAttribute status=${PVALUE}"
+
+note "$LINENO: Creating BIOS config job"
+count=0
+while true; do
+  wclinvoke DCIM_BIOSService CreateTargetedConfigJob Target="BIOS.Setup.1-1"
+  saveresponse "cfgjob-1a" "Selector" "InstanceID"
+  [ ! -z "${PVALUE}" ] && break
+  count=$((count + 1)) ; [ ${count} -gt 12 ] && error "$LINENO: Failed to create job - system services may still be unavailable, check logs"
+  read -t 30 -n 1 -p "# $LINENO: Operation repeats until job could be created, press ENTER to stop wait..."
+  echo
+done
+wclget DCIM_LifecycleJob InstanceID=${PVALUE}
+[ $? -ne 0 ] && error "$LINENO: Failed to create configjob for BIOS, check logs"
+vCfgJob=${PVALUE}
+
+note "$LINENO: Create reboot job"
+# 1=powercycle, 2=gracefulreboot, 3=gracefulrebootforced
+wclinvoke DCIM_SoftwareInstallationService CreateRebootJob RebootJobType=1
+saveresponse "cfgjob-1b" "Selector" "InstanceID"
+wclget DCIM_LifecycleJob InstanceID=${PVALUE}
+[ $? -ne 0 ] && error "$LINENO: Failed to create reboot job, check logs"
+vReboot=${PVALUE}
+
+note "$LINENO: Set config and reboot job to run now"
+wclinvoke DCIM_JobService SetupJobQueue StartTimeInterval=TIME_NOW JobArray=${vCfgJob} JobArray=${vReboot}
+saveresponse "cfgjob-1c" "ReturnValue" 
+[ -z "${PVALUE}" ] || [ ${PVALUE} -ne 0 ] && error "$LINENO: Failed to schedule jobs ${vCfgJob} ${vReboot}, check logs"
+
+# wait for job done and rsstatus ready
+pollforjobdone $LINENO "${vCfgJob}" 15
+
+read -t 60 -n 1 -p "# $LINENO: Waiting 1 minute for iDRAC database initialization, press ENTER to stop wait..."
+echo
+
+wclenum DCIM_BootConfigSetting && saveresponse "bootcfg-2a"
+wclenum DCIM_BootSourceSetting -mode epr && saveresponse "bootsrc-2a"
+fSearchValueOf ${CURRENTXML} 1 Selector InstanceID HardDisk ; vHDID=${PVALUE}
+wclget DCIM_BootSourceSetting InstanceID=${vHDID} && saveresponse "bootsrc-2b"
+fGetValueOf ${CURRENTXML} "CurrentAssignedSequence" ; vSeq=${PVALUE}
+fGetValueOf ${CURRENTXML} "CurrentEnabledStatus" ; vEnabled=${PVALUE}
+
+if [ ! -z "${vNocsior}" ]; then
+  note "$LINENO: Disable CSIOR"
+  wclinvoke DCIM_LCService SetAttribute AttributeName="Collect System Inventory on Restart" AttributeValue=Disabled
+  saveresponse "csior-2"
+  wclinvoke DCIM_LCService CreateConfigJob ScheduledStartTime='00000000000000.000000:000' RebootIfRequired=false
+  saveresponse "lcjob-2" "Selector" "InstanceID"
+  wclget DCIM_LifecycleJob InstanceID=${PVALUE}
+
+  if [ $? -ne 0 ]; then
+    warning "$LINENO: Failed to disable CSIOR, check logs"
+  else
+    note "$LINENO: Reset the system to disable CSIOR" 
+    wclinvoke CIM_ComputerSystem -filter "select * from CIM_ComputerSystem where Name='srv:system'" RequestStateChange RequestedState=11
+    saveresponse "powerreset-3" "ReturnValue"
+    [ -z "${PVALUE}" ] || [ ${PVALUE} -ne 0 ] && warning "$LINENO: Failed to reset the system, check logs"
+  fi
+fi
+
+if [ ${vSeq} -eq 0 ] && [ ${vEnabled} -eq 1 ]; then
+  echo; note "$LINENO: Set HardDisk as first boot device is complete, check logs for more information"
+else
+  echo; error "$LINENO: Failed to set IPL:HardDisk as first boot device, check logs"
+fi
+
+cd -
+fTimerPrint
+exit 0
+
+# ###########################################################################
+# End of Code
+# ###########################################################################
+

@@ -1,0 +1,7 @@
+
+AD
+drmw-adconfig -get adconfig.ini
+drmw-adconfig -set adconfig.ini
+drmw-adconfig -cancel
+drmw-adconfig -commit
+wsl invoke DCIM_LCService SetPublicCertificate Type=directoryCA Certificate=RFILE:../newad.cer

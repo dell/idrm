@@ -1,0 +1,197 @@
+
+# Command structure specification
+#   <COMMAND> <SUBCOMMAND> <HELPSTRING> <POSTEXECUTIONHELP> <WSLCOMMAND>
+
+# alert filter config (Dell Event Filter profile)
+#    RequestedAction
+#       0=None, 1=Reboot, 2=PowerOff, 3=PowerCycle
+#    RequestedNotification
+#       0=None, 1=IPMIAlert, 2=SNMPTrap, 3=EmailAlert, 4=LCD, 5=OSLog
+
+export vCommands=(
+
+ "attribute" "modular snmp" "Modular chassis SNMP attributes. (ARGS) AttrName AttrValue" ""
+      "wsl invoke CIM_BIOSService SetBIOSAttribute -filter \"select * from CIM_BIOSService where Name='mgmtcontrollerservice1'\" SystemFQDD=System.Chassis.1 FQDD=SNMP.BIR.1 AttributeName=XX AttributeValue=XX"
+
+ "attribute" "blade network" "Blade server network attributes, index is 1-based 0-padded. (ARGS) BladeIndex AttrName AttrValue" ""
+      "wsl invoke CIM_BIOSService SetBIOSAttribute -filter \"select * from CIM_BIOSService where Name='mgmtcontrollerservice1'\" SystemFQDD=System.Modular.XX FQDD=Network.MC.01 AttributeName=XX AttributeValue=XX"
+
+ "attribute" "blade useradmin" "Blade server user account attributes, index is 1-based 0-padded except user. (ARGS) BladeIndex UserIndex AttrName AttrValue" ""
+      "wsl invoke CIM_BIOSService SetBIOSAttribute -filter \"select * from CIM_BIOSService where Name='mgmtcontrollerservice1'\" SystemFQDD=System.Modular.XX FQDD=User.MC.XX AttributeName=XX AttributeValue=XX"
+
+ "user" "enable" "(ARG) Accountindex" ""
+      "wsl invoke CIM_Account RequestStateChange -filter \"select * from CIM_Account where ElementName='accountXX'\" RequestedState=2"
+
+ "user" "disable" "(ARGS) Accountindex" ""
+      "wsl invoke CIM_Account RequestStateChange -filter \"select * from CIM_Account where ElementName='accountXX'\" RequestedState=3"
+
+ "user" "domain setdca" "Set AD Domain Controller IP addresses. (ARGS) IP1 IP2 IP3" ""
+      "wsl put DCIM_ActiveDirectoryService DomainControllerAddresses=XX DomainControllerAddresses=XX DomainControllerAddresses=XX"
+
+ "alert" "email commit" "Commit modifications to group iDRAC.Embedded.1" ""
+      "wsl invoke DCIM_iDRACCardService CreateTargetedConfigJob Target='iDRAC.Embedded.1' RebootIfRequired='false' ScheduledStartTime='TIME_NOW'"
+
+ "alert" "email cancel" "Cancel modifications to group iDRAC.Embedded.1" ""
+      "wsl invoke DCIM_iDRACCardService DeletePendingConfiguration Target='iDRAC.Embedded.1'"
+
+ "alert" "email enable" "(ARGS) INDEX{1...4}" ""
+      "wsl invoke DCIM_iDRACCardService SetAttribute Target='iDRAC.Embedded.1' AttributeName='EmailAlert.XX#Enable' AttributeValue='Enabled'"
+
+ "alert" "email disable" "(ARGS) INDEX{1...4}" ""
+      "wsl invoke DCIM_iDRACCardService SetAttribute Target='iDRAC.Embedded.1' AttributeName='EmailAlert.XX#Enable' AttributeValue='Disabled'"
+
+ "alert" "email address" "(ARGS) INDEX{1...4} EmailAddress" ""
+     "wsl invoke DCIM_iDRACCardService SetAttribute Target='iDRAC.Embedded.1' AttributeName='EmailAlert.XX#Address' AttributeValue='XX'"
+
+ "alert" "email custommessage" "(ARGS) INDEX{1...4} MessageString" ""
+      "wsl invoke DCIM_iDRACCardService SetAttribute Target='iDRAC.Embedded.1' AttributeName='EmailAlert.XX#CustomMsg' AttributeValue='XX'"
+
+ "alert" "email smtp" "(ARGS) IPAddress|FQDN" ""
+      "wsl invoke DCIM_iDRACCardService SetAttribute Target='iDRAC.Embedded.1' AttributeName='RemoteHosts.1#SMTPServerIPAddress' AttributeValue='XX'"
+
+ "alert" "filter bycategory" "(ARGS) Cat SubCat Severity RequestedAction RequestedNotification" ""
+      "wsl invoke DCIM_EFConfigurationService SetEventFilterByCategory Category='XX' SubCategory='XX' Severity=XX RequestedAction=XX RequestedNotification=XX"
+
+ "alert" "filter byid" "(ARGS) InstanceID RequestedAction RequestedNotification" ""
+      "wsl invoke DCIM_EFConfigurationService SetEventFilterByInstanceIDs InstanceID='XX' RequestedAction=XX RequestedNotification=XX"
+
+ "bios" "commit" "Commit modifications to group BIOS.Setup.1-1" ""
+      "wsl invoke DCIM_BIOSService CreateTargetedConfigJob Target='BIOS.Setup.1-1' RebootIfRequired='false' RebootJobType='3' ScheduledStartTime='TIME_NOW'"
+
+ "bios" "cancel" "Cancel modifications to group BIOS.Setup.1-1" ""
+      "wsl invoke DCIM_BIOSService DeletePendingConfiguration Target='BIOS.Setup.1-1'"
+
+ "bios" "attribute" "(ARGS) AttributeName AttributeValue" ""
+      "wsl invoke DCIM_BIOSService SetAttribute Target='BIOS.Setup.1-1' AttributeName='XX' AttributeValue='XX'"
+
+ "bios" "assettag" "(ARGS) AssetString" ""
+      "wsl invoke DCIM_BIOSService SetAttribute Target='BIOS.Setup.1-1' AttributeName='AssetTag' AttributeValue='XX'"
+
+ "bootm" "firstbootdevice select" "Modular (ARGS) BladeIndex BootSourceName" ""
+      "wsl enum Dell_BootConfigSetting -mode epr -filter \"select * from Dell_BootConfigSetting where InstanceID like '%XX%'\" ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml bladebcs.xml ; wsl enum Dell_BootSourceSetting -mode epr -filter \"select * from Dell_BootSourceSetting where InstanceID like '%:XX%'\" ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml bootsrc.xml ; wsl invoke Dell_BootConfigSetting -inst bladebcs.xml ChangeBootOrder Source=FILE:bootsrc.xml"
+
+ "bootm" "firstbootdevice isnext" "Modular (ARGS) BladeIndex" ""
+      "wsl enum Dell_BootConfigSetting -mode epr -filter \"select * from Dell_BootConfigSetting where InstanceID like '%XX%'\" ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml bladebcs.xml ; wsl invoke Dell_BootService SetBootConfigRole Role=0 BootConfigSetting=FILE:bladebcs.xml"
+
+ "bootm" "firstbootdevice isnextonce" "Modular (ARGS) BladeIndex" ""
+      "wsl enum Dell_BootConfigSetting -mode epr -filter \"select * from Dell_BootConfigSetting where InstanceID like '%XX%'\" ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml bladebcs.xml ; wsl invoke Dell_BootService SetBootConfigRole Role=1 BootConfigSetting=FILE:bladebcs.xml"
+
+ "bootm" "firstbootdevice isnextnone" "Modular (ARGS) BladeIndex" ""
+      "wsl enum Dell_BootConfigSetting -mode epr -filter \"select * from Dell_BootConfigSetting where InstanceID like '%XX%'\" ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml bladebcs.xml ; wsl invoke Dell_BootService SetBootConfigRole Role=3 BootConfigSetting=FILE:bladebcs.xml"
+
+ "identify" "" "Check if target has WSMAN service" ""
+      "wsl id check" 
+
+ "job" "powercycle" "Create a job to power cycle the system." ""
+      "wsl invoke DCIM_SoftwareInstallationService CreateRebootJob RebootJobType=1"
+
+ "job" "reboot" "Create a job to reboot the system. Allows proper OS shutdown." ""
+      "wsl invoke DCIM_SoftwareInstallationService CreateRebootJob RebootJobType=2"
+
+ "job" "rebootforced" "Create a job to reboot the system. Allows proper OS shutdown with timeout." ""
+      "wsl invoke DCIM_SoftwareInstallationService CreateRebootJob RebootJobType=3"
+
+ "job" "schedule now" "Schedule a job to run now or immediately. (ARGS) JobID" ""
+      "wsl invoke DCIM_JobService SetupJobQueue StartTimeInterval=TIME_NOW JobArray=XX"
+
+ "job" "schedule at" "Schedule a job to run at a specified time. (ARGS) Time, JobID" ""
+      "wsl invoke DCIM_JobService SetupJobQueue StartTimeInterval=XX JobArray=XX"
+
+ "job" "clear" "Delete all Job instances." ""
+       "wsl invoke DCIM_JobService DeleteJobQueue JobID=JID_CLEARALL"
+
+ "job" "delete" "Delete a specific Job instance. (ARGS) JobID" ""
+       "wsl invoke DCIM_JobService DeleteJobQueue JobID=XX"
+
+ "log" "clearhw" "Clear (delete all) hardware log." ""
+       "wsl invoke CIM_Log ClearLog -filter \"select * from CIM_Log where InstanceID like '%Hardware%'\""
+
+ "log" "clearsw" "Clear (delete all) software log." ""
+       "wsl invoke CIM_Log ClearLog -filter \"select * from CIM_Log where InstanceID like '%Software%'\""
+
+ "powermetric" "aggregate clear" "Clear power aggregate metric values" ""
+      "wsl invoke Dell_PowerMetricService ControlMetrics MetricCollectionEnabled=XX"
+
+ "power" "on" "System On by name. ARGS: ComputerSystem.Name" ""
+      "wsl enum CIM_ComputerSystem -mode epr -filter \"select * from CIM_ComputerSystem where Name like '%XX%'\" ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml system.xml ; wsl invoke CIM_PowerManagementService RequestPowerStateChange PowerState=2 ManagedElement=FILE:system.xml"
+
+ "power" "on2" "System On by name (CS profile). ARGS: ComputerSystem.Name" ""
+      "wsl invoke CIM_ComputerSystem RequestStateChange -filter \"select * from CIM_ComputerSystem where Name like '%XX%'\" RequestedState=2"
+
+ "power" "offgraceful" "System Off by name with proper OS shutdown. ARGS: ComputerSystem.Name" ""
+      "wsl enum CIM_ComputerSystem -mode epr -filter \"select * from CIM_ComputerSystem where Name like '%XX%'\" ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml system.xml ; wsl invoke CIM_PowerManagementService RequestPowerStateChange PowerState=12 ManagedElement=FILE:system.xml"
+
+ "power" "off" "Ssytem Off by name. ARGS: ComputerSystem.Name"  ""
+      "wsl enum CIM_ComputerSystem -mode epr -filter \"select * from CIM_ComputerSystem where Name like '%XX%'\" ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml system.xml ; wsl invoke CIM_PowerManagementService RequestPowerStateChange PowerState=8 ManagedElement=FILE:system.xml"
+
+ "power" "off2" "System Off by name (CS profile). ARGS: ComputerSystem.Name" ""
+      "wsl invoke CIM_ComputerSystem RequestStateChange -filter \"select * from CIM_ComputerSystem where Name like '%XX%'\" RequestedState=3"
+
+ "power" "cycle" "System power cycle by name. ARGS: ComputerSystem.Name" ""
+      "wsl enum CIM_ComputerSystem -mode epr -filter \"select * from CIM_ComputerSystem where Name like '%XX%'\" ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml system.xml ; wsl invoke CIM_PowerManagementService RequestPowerStateChange PowerState=5 ManagedElement=FILE:system.xml"
+
+ "power" "cycle2" "System power cycle by name (CS profile). ARGS: ComputerSystem.Name" ""
+      "wsl invoke CIM_ComputerSystem RequestStateChange -filter \"select * from CIM_ComputerSystem where Name like '%XX%'\" RequestedState=11"
+
+ "power" "mbr" "System hard reset (master bus reset) by name. ARGS: ComputerSystem.Name" ""
+      "wsl enum CIM_ComputerSystem -mode epr -filter \"select * from CIM_ComputerSystem where Name like '%XX%'\" ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml system.xml ; wsl invoke CIM_PowerManagementService RequestPowerStateChange PowerState=10 ManagedElement=FILE:system.xml"
+
+ "power" "nmi" "Pulse diagnostic interrupt by name. ARGS: ComputerSystem.Name" ""
+      "wsl enum CIM_ComputerSystem -mode epr -filter \"select * from CIM_ComputerSystem where Name like '%XX%'\" ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml system.xml ; wsl invoke CIM_PowerManagementService RequestPowerStateChange PowerState=11 ManagedElement=FILE:system.xml"
+
+ "power" "extmgmt enable" "Enable server-based power management (Modular System Info profile)" ""
+      "wsl invoke DCIM_MgmtControllerService ServerBasedPowerMgmtEnable -filter \"select * from CIM_BIOSService where Name='mgmtcontrollerservice1'\" Mode=true"
+
+ "power" "extmgmt disable" "Disable server-based power management (Modular System Info profile)" ""
+      "wsl invoke DCIM_MgmtControllerService ServerBasedPowerMgmtEnable -filter \"select * from CIM_BIOSService where Name='mgmtcontrollerservice1'\" Mode=false"
+
+ "power" "passthru reset" "Passthrough module power cycle by name (CS profile). ARGS: Name" ""
+      "wsl invoke CIM_PassThroughModule RequestStateChange -filter \"select * from CIM_PassThroughModule where Name like '%XX%'\" RequestedState=11"
+
+ "power" "cde enable" "Enable power configuration dynamic engagement." ""
+      "wsl put Dell_PowerConfigSvc -filter \"select * from Dell_PowerConfigSvc where SystemName='systemmc'\" DynamicEngageEnabled=2"
+
+ "power" "cde disable" "Disable power configuration dynamic engagement." ""
+      "wsl put Dell_PowerConfigSvc -filter \"select * from Dell_PowerConfigSvc where SystemName='systemmc'\" DynamicEngageEnabled=3"
+
+ "power" "sipc" "Set system input power cap. ARGS: cap value" ""
+      "wsl put Dell_ChPwrCapResSettingData -filter \"select * from Dell_ChPwrCapResSettingData where ClassIdNum=21\" Reservation=XX"
+
+ "power" "blade budget" "Set blade power budget priority. ARGS: blade index, weight value" ""
+      "wsl put Dell_BlPwrResourceAllocationSettingData -filter \"select * from Dell_BlPwrResourceAllocationSettingData where InstanceID='Dell:Dell_BlPwrResourceAllocationSettingData:XX'\" Weight=XX"
+
+ "power" "redundancy ac" "Set system AC redundancy (AssignPowerRedundancyPriority)." ""
+      "wsl invoke Dell_PowerConfigSvc AssignPowerRedundancyPriority RequestedRedundancyPriority=2"
+
+ "power" "redundancy ac2" "set system AC redundancy (ConfigureExternalPowerDomainDefaults)." ""
+      "wsl enum Dell_Modular -mode epr; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml dellmodular.xml; wsl invoke Dell_PowerConfigSvc ConfigureExternalPowerDomainDefaults RequestedChange=2 OwningComputerSystem=FILE:dellmodular.xml"
+
+ "power" "redundancy ac3" "set system AC redundancy (ChangeAffectedElementsAssignedSequence)." ""
+      "wsl enum Dell_ACRedundancySet -mode epr; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml acset.xml; wsl enum Dell_DCRedundancySet -mode epr; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml dcset.xml; wsl invoke Dell_PowerConfigSvc ChangeAffectedElementsAssignedSequence AssignedSequence=1 AssignedSequence=2 ManagedElements=FILE:acset.xml ManagedElements=FILE:dcset.xml"
+
+ "power" "redundancy dc" "Set system DC redundancy (AssignPowerRedundancyPriority)." ""
+      "wsl invoke Dell_PowerConfigSvc AssignPowerRedundancyPriority RequestedRedundancyPriority=3"
+
+ "power" "redundancy dc2" "Set system DC redundancy (ConfigureExternalPowerDomainDefaults)." ""
+      "wsl enum Dell_Modular -mode epr; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml dellmodular.xml; wsl invoke Dell_PowerConfigSvc ConfigureExternalPowerDomainDefaults RequestedChange=3 OwningComputerSystem=FILE:dellmodular.xml"
+
+ "power" "redundancy dc3" "set system AC redundancy (ChangeAffectedElementsAssignedSequence)." ""
+      "wsl enum Dell_ACRedundancySet -mode epr; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml acset.xml; wsl enum Dell_DCRedundancySet -mode epr; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml dcset.xml; wsl invoke Dell_PowerConfigSvc ChangeAffectedElementsAssignedSequence AssignedSequence=2 AssignedSequence=1 ManagedElements=FILE:acset.xml ManagedElements=FILE:dcset.xml"
+
+ "power" "redundancy none" "Set system power policy to No-Redundancy (AssignPowerRedundancyPriority)." ""
+      "wsl invoke Dell_PowerConfigSvc AssignPowerRedundancyPriority RequestedRedundancyPriority=4"
+
+ "power" "redundancy none3" "set system power policy to No-Redundancy (ChangeAffectedElementsAssignedSequence)." ""
+      "wsl enum Dell_ACRedundancySet -mode epr; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml acset.xml; wsl enum Dell_DCRedundancySet -mode epr; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml dcset.xml; wsl invoke Dell_PowerConfigSvc ChangeAffectedElementsAssignedSequence AssignedSequence=0 AssignedSequence=0 ManagedElements=FILE:acset.xml ManagedElements=FILE:dcset.xml"
+
+ "update" "firmware nfs" "(ARGS) InstanceID ShareIP Pathfilename Mountpoint" ""
+      "wsl enum DCIM_SoftwareIdentity -filter \"select * from DCIM_SoftwareIdentity where InstanceID='XX'\" -mode epr ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml sid.xml ; wsl invoke DCIM_SoftwareInstallationService InstallFromURI URI='nfs://XX/XX;mountpoint=/XX' Target=FILE:sid.xml"
+
+ "update" "firmware cifs" "(ARGS) InstanceID Username Passcode ShareIP Pathfilename Mountpoint" ""
+      "wsl enum DCIM_SoftwareIdentity -filter \"select * from DCIM_SoftwareIdentity where InstanceID='XX'\" -mode epr ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml sid.xml ; wsl invoke DCIM_SoftwareInstallationService InstallFromURI URI='cifs://XX/XX@XX/XX;mountpoint=XX' Target=FILE:sid.xml"
+
+ "update" "firmware xtp" "(ARGS) InstanceID TYPE{http|ftp|tftp} ShareIP Pathfilename" ""
+      "wsl enum DCIM_SoftwareIdentity -filter \"select * from DCIM_SoftwareIdentity where InstanceID='XX'\" -mode epr ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml sid.xml ; wsl invoke DCIM_SoftwareInstallationService InstallFromURI URI='XX://XX/XX' Target=FILE:sid.xml"
+
+)
+

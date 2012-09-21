@@ -1,0 +1,53 @@
+This file contains summary information about the containing package.
+
+idrm = iDRAC Remote Management (WSMAN) Client
+a.k.a. "idrum"
+
+=============================================================================
+ REVISION
+=============================================================================
+
+0.1.0	- Creation of this package.
+
+=============================================================================
+ DESCRIPTION
+=============================================================================
+
+DRM contains various scripts that provide a wrapper command line interface
+to systems management workflow using the WSMAN remote interface of 
+Lifecycle Controller in iDRAC. WSMAN provides standards based messaging for 
+systems management CIM-style objects.
+
+=============================================================================
+ REQUIREMENTS
+=============================================================================
+
+The tools in this package requires the following to run:
+
+ * wsl - Wsman Shell commandLine
+
+It may run on Windows operating system by installing CYGWIN or similar
+port of GNU shell environment and tools.
+
+=============================================================================
+ EXECUTION
+=============================================================================
+
+Each script shall have its own usage help text.
+
+ * ireport - Reporting of managed data properties.
+
+ * iconfig - Configuration of managed data properties.
+
+There are no user-configurable file. However, you may wish to update
+the command specification files ireport-cmds and iconfig-cmds.
+
+=============================================================================
+ USE AGREEMENT
+=============================================================================
+
+See accompanying LICENSE file. 
+  
+=============================================================================
+[End of Document]
+=============================================================================
