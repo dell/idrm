@@ -46,8 +46,11 @@ MYVERSION="0.1.0"
 MYNAME=`basename $0`
 MYPATH=${0%/*}
 export NODATEDUMP=1
-[ -e "${MYPATH}/wsl-functions" ] && . ${MYPATH}/wsl-functions
 
+WSLTOOL=$(which wsl 2>/dev/null)
+[ -z "${WSLTOOL}" ] && echo -e "ERROR: failed to find wsl toolset!!!" && exit 1
+WSLPATH=${WSLTOOL%wsl}
+. ${WSLPATH}wsl-functions
 
 MYCONFIG="${MYNAME}-cmds"
 [ -e "${MYPATH}/${MYCONFIG}" ] && . ${MYPATH}/${MYCONFIG}
@@ -138,7 +141,8 @@ EOF
   exit 1
 }
 
-[ ! -e "wsl" ] && [ ! -e "${MYPATH}/wsl" ] && echo "ERROR: failed to find wsl toolset!!!" && usage
+which wsl 2>/dev/null >/dev/null
+[ $? -ne 0 ] && echo -e "ERROR: failed to find wsl toolset!!!" && usage
 
 [ $# -lt 1 ] && usage
 ucm1=$1; shift
@@ -173,7 +177,7 @@ for (( index = 0; index < ${count}; index++ )); do
     fGetTarget
     export WSAUTOMATED=1
     [ ${OUTLEVEL} -ge 2 ] && echo "${ecmd}"
-    bash -c "${MYPATH}/${ecmd}" ; STAT=$?
+    bash -c "${ecmd}" ; STAT=$?
     echo -e "${reminder}"
     break
   fi
