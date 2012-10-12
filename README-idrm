@@ -35,12 +35,17 @@ port of GNU shell environment and tools.
 
 Each script shall have its own usage help text.
 
- * ireport - Reporting of managed data properties.
+ * lcreport - Reporting of managed data properties.
 
- * iconfig - Configuration of managed data properties.
+ * lcconfig - Configuration of managed data properties.
 
-There are no user-configurable file. However, you may wish to update
-the command specification files ireport-cmds and iconfig-cmds.
+ * lcupdate - Firmware update of system components.
+
+There are no user-configurable file. If you think something is not working
+or if you like to add to the list of commands, edit the "cmd" files
+associated with the scripts. For example, the command specification for
+"lcreport" is defined in the file "lcreport-cmds". Edit the ""lcreport-cmds"
+file.
 
 =============================================================================
  USE AGREEMENT

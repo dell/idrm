@@ -72,15 +72,18 @@ usage() {
 
   case "${MYNAME}" in
     "idrm" )
-       echo "Do not run idrm directly. Instead run ireport or iconfig"
+       echo -e "\nDo not run idrm directly. Use the lc commands, such as lcreport\n"
        ${WSCOLORNORM}
        exit 1
        ;;
-    "ireport" )
-       echo "Reporting of managed data properties"
+    "lcreport" )
+       echo "Reporting of managed data"
        ;;
-    "iconfig" )
-       echo "Configuration of managed data properties"
+    "lcconfig" )
+       echo "Configuration of managed data"
+       ;;
+    "lcupdate" )
+       echo "Update of component firmware"
        ;;
     * )
        echo "UNKNOWN"
@@ -94,9 +97,9 @@ USAGE: $MYNAME COMMAND SUBCOMMAND [SUBCOMMAND2] [PARAMS ...]
 
 EOF
   if [ -z "${filter1}" ]; then
-    echo "List of COMMANDs. Specify command to get more help on subcommands."
+    echo "List of COMMAND. Specify command to get more help on subcommands."
   else
-    echo "List of COMMAND SUBCOMMAND [SUBCOMMAND2] and Description:"
+    echo "List of COMMAND SUBCOMMANDS and Description:"
   fi
   if [ -z "${vCommands}" ]; then
     cat <<EOF
@@ -170,10 +173,15 @@ for (( index = 0; index < ${count}; index++ )); do
   if [ ${flag} -ge 0 ]; then
     ecmd="${vCommands[$cmd]}"
     reminder="${vCommands[$reminder]}"
-    for (( uindex = ${flag}; uindex < ${#uargs[*]}; uindex++ )); do
-      item=${uargs[$uindex]}
-      ecmd=$(echo "${ecmd}" | sed "s/XX/${item}/")
-    done
+    echo ${ecmd} | grep "^%%" >/dev/null
+    if [ $? -ne 0 ]; then
+      for (( uindex = ${flag}; uindex < ${#uargs[*]}; uindex++ )); do
+        item=${uargs[$uindex]}
+        ecmd=$(echo "${ecmd}" | sed "s/XX/${item}/")
+      done
+    else
+      ecmd=$(echo "${ecmd}" | sed "s/^%%//")
+    fi
     fGetTarget
     export WSAUTOMATED=1
     [ ${OUTLEVEL} -ge 2 ] && echo "${ecmd}"

@@ -156,7 +156,7 @@ if [ -z "${vExpress}" ]; then
 cat <<EOF
 
 **************************************************************************
-This script configures the first boot device of the servier to HardDisk
+This script configures the first boot device of the server to HardDisk
 using the Web Services interface (WSMAN) of Lifecycle Controller in iDRAC.
 
 See the LICENSE file for license and agreement about running this script.

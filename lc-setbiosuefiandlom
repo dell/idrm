@@ -1,0 +1,49 @@
+#!/bin/bash
+
+## First check if attributes are present
+
+attr="BootMode"
+wsl enum DCIM_BIOSEnumeration -filter "select * from DCIM_BIOSEnumeration where InstanceID like '%:${attr}'"
+grep "${attr}" response.xml >/dev/null 2>&1
+[ $? -ne 0 ] && echo "error: instance does not contain ${attr}!" && exit 1
+
+attr="IntegratedNetwork1"
+wsl enum DCIM_BIOSEnumeration -filter "select * from DCIM_BIOSEnumeration where InstanceID like '%:${attr}'"
+grep "${attr}" response.xml >/dev/null 2>&1
+[ $? -ne 0 ] && echo "error: instance does not contain ${attr}!" && exit 1
+
+## Perform the set
+
+wsl invoke DCIM_BIOSService SetAttributes Target="BIOS.Setup.1-1" AttributeName="BootMode" AttributeValue="Uefi" AttributeName="IntegratedNetwork1" AttributeValue="DisabledOs"
+grep -i returnvalue response.xml | grep '>0<' >/dev/null 2>&1
+[ $? -ne 0 ] && echo "error: SetAttributes return value is not 0!" && exit 1
+
+## Commit the change to the target
+
+wsl invoke DCIM_BIOSService CreateTargetedConfigJob Target="BIOS.Setup.1-1" ScheduledStartTime="TIME_NOW"
+grep -i returnvalue response.xml | grep '>4096<' >/dev/null 2>&1
+[ $? -ne 0 ] && echo "error: CreateTargetedConfigJob return value is not 4096!" && exit 1
+
+## Get job information
+
+jobid=$( grep "InstanceID" response.xml | cut -d'>' -f2 | cut -d'<' -f1 )
+
+## Monitor job status until complete
+
+timeout=6
+waittime=10
+while [ ${timeout} -gt 0 ]; do
+  wsl get DCIM_LifecycleJob InstanceID="${jobid}"
+  [ ! -s response.xml ] && echo "error: get job instance is empty!" && exit 1
+  jobstatus=$( grep "JobStatus" response.xml | cut -d'>' -f2 | cut -d'<' -f1 )
+  echo "Job ${jobid} status is ${jobstatus}"
+  echo ${jobstatus} | grep -i "complete" >/dev/null && break
+  echo ${jobstatus} | grep -i "scheduled" >/dev/null && break
+  read -t ${waittime} -p "Pausing for ${waittime} seconds to recheck job status."
+  echo
+  timeout=$((timeout - 1))
+done
+
+echo "NOTICE: The change will be applied at the next reboot."
+exit 0
+

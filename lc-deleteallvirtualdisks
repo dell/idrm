@@ -1,0 +1,56 @@
+#!/bin/bash
+
+## First get the FQDD of virtual disks
+
+wsl enum DCIM_VirtualDiskView
+[ ! -s response.xml ] && echo "error: response is empty!" && exit 1
+
+flist=$( grep FQDD response.xml | cut -d'>' -f2 | cut -d'<' -f1 )
+
+## Delete each virtual disk
+
+fail=0
+for item in ${flist}; do
+  wsl invoke DCIM_RAIDService DeleteVirtualDisk Target=${item}
+  grep -i returnvalue response.xml | grep '>0<' >/dev/null 2>&1
+  [ $? -ne 0 ] && echo "warning: DeleteVirtualDisk ${item} failed!" && fail=1
+done
+
+[ ${fail} -ne 0 ] && echo "error: one or more operations failed!" && exit 1
+
+## Get FQDD of owning controller
+
+wsl enum DCIM_ControllerView
+[ ! -s response.xml ] && echo "error: enumerate response is empty!" && exit 1
+
+target=$( grep ":FQDD" response.xml | cut -d'>' -f2 | cut -d'<' -f1 )
+
+## Commit changes and schedule to take effect now
+
+wsl invoke DCIM_RAIDService CreateTargetedConfigJob Target="${target}" ScheduledStartTime="TIME_NOW"
+grep -i returnvalue response.xml | grep '>4096<' >/dev/null 2>&1
+[ $? -ne 0 ] && echo "error: CreateTargetedConfigJob return value is not 4096!" && exit 1
+
+## Get job information
+
+jobid=$( grep "InstanceID" response.xml | cut -d'>' -f2 | cut -d'<' -f1 )
+
+## Monitor job status until complete
+
+timeout=6
+waittime=10
+while [ ${timeout} -gt 0 ]; do
+  wsl get DCIM_LifecycleJob InstanceID="${jobid}"
+  [ ! -s response.xml ] && echo "error: get job instance is empty!" && exit 1
+  jobstatus=$( grep "JobStatus" response.xml | cut -d'>' -f2 | cut -d'<' -f1 )
+  echo "Job ${jobid} status is ${jobstatus}"
+  echo ${jobstatus} | grep -i "complete" >/dev/null && break
+  echo ${jobstatus} | grep -i "scheduled" >/dev/null && break
+  read -t ${waittime} -p "Pausing for ${waittime} seconds to recheck job status."
+  echo
+  timeout=$((timeout - 1))
+done
+
+echo "NOTICE: The change will be applied at the next reboot."
+exit 0
+

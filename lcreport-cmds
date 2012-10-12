@@ -15,6 +15,15 @@ export vCommands=(
  "attribute" "enum" "Enumerate all enumeration attributes" ""
       "wsl enum CIM_BIOSEnumeration"
 
+ "system" "id" "Get basic system identification" ""
+      "wsl enum DCIM_SystemView -filter \"select ServiceTag,Model,SystemID,FQDD from DCIM_SystemView\""
+
+ "idrac" "status" "Get iDRAC status" ""
+      "wsl invoke DCIM_LCService GetRemoteServicesAPIStatus"
+
+ "idrac" "status2" "Get iDRAC status old 11G firmware" ""
+      "wsl invoke DCIM_LCService GetRSStatus"
+
  "view" "blades" "List blade server views" ""
       "wsl enum CIM_View -filter \"select * from DCIM_BladeServerView\""
 
@@ -45,7 +54,7 @@ export vCommands=(
  "identify" "" "Check if a target has WSMAN service" ""
       "wsl id check"
 
- "job" "getall" "Enumerate all Job instances" ""
+ "job" "list" "Enumerate all Job instances" ""
       "wsl enum DCIM_LifecycleJob"
 
  "job" "get" "Get a specific Job instance. (ARGS) JobID" ""

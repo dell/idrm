@@ -1,0 +1,38 @@
+
+# Command structure specification
+#   <COMMAND> <SUBCOMMAND> <HELPSTRING> <POSTEXECUTIONHELP> <WSLCOMMAND>
+
+export vCommands=(
+
+ "fw" "1getinstalledfw" "List installed firmware" ""
+      "%%lc-update1getinstalledfw"
+
+ "fw" "1getavailablefw" "List firmware images available internally for update." ""
+      "%%lc-update1getavailablefw"
+
+ "fw" "2updatefromnfs" "Update firmware from NFS repository. Jobs saved to file." ""
+      "%%lc-update2updatefromnfs"
+
+ "fw" "2updatetoavailable" "Update firmware from internal repository. Jobs saved to file." ""
+      "%%lc-update2updatetoavailable"
+
+ "fw" "3monwhiledownloading" "Monitor update jobs while at least 1 status is downloading." ""
+      "%%lc-update3monwhiledownloading"
+
+ "fw" "4canceljobs" "Cancel jobs created by update commands." ""
+      "%%lc-update4canceljobs"
+
+ "fw" "4rebootjob" "Create a reboot job for the update." ""
+      "%%lc-update4rebootjob"
+
+ "fw" "5schedulenow" "Schedule jobs created by update commands to start in the next minute." ""
+      "%%lc-update5schedulenow"
+
+ "fw" "5statusjobs" "Get status of all jobs created by update commands." ""
+      "%%lc-update5statusjobs"
+
+ "fw" "6monuntilcomplete" "Monitor update jobs until all are in complete status." ""
+      "%%lc-update6monuntilcomplete"
+
+)
+

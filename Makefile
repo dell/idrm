@@ -4,6 +4,8 @@ include VERSION
 myname=idrm
 packagepath=..
 standalonedir=dcim
+packagedest=${HOME}
+packagename=${myname}-${version}
 
 all: help
 
@@ -22,8 +24,8 @@ standalonepackclean:
 
 standalonepack: standalonepackclean
 	-/bin/mkdir ${standalonedir}
-	-/bin/cp -dv ${myname}* iconfig* ireport* LIC* READ* VER* ${standalonedir}/
+	-/bin/cp -dv ${myname}* derec lc* *.ini i* LIC* READ* VER* ${standalonedir}/
 	chmod go-w ${standalonedir}/*
-	tar -cvjf ${packagepath}/${myname}-${version}.tbz ${standalonedir}/* --exclude "Makefile"
-	zip -u ${packagepath}/${myname}.zip ${packagepath}/${myname}-${version}.tbz 
+	tar -cvjf ${packagedest}/${packagename}.tbz ${standalonedir}/* --exclude "Makefile"
+	zip -u ${packagedest}/${myname}.zip ${packagedest}/${packagename}.tbz 
 

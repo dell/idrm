@@ -1,0 +1,66 @@
+#!/bin/bash
+
+## Check if BootMode is set to UEFI
+
+wsl enum DCIM_BIOSEnumeration -filter "select CurrentValue,PendingValue from DCIM_BIOSEnumeration where AttributeName='BootMode'"
+grep -i uefi response.xml >/dev/null 2>&1
+[ $? -ne 0 ] && echo "error: BootMode is not set to UEFI which is required." && exit 1
+
+## Get FQDD for all NICs in slot
+
+wsl enum DCIM_NICView -filter "select FQDD from DCIM_NICView where InstanceID like 'NIC.Slot.%'"
+grep "FQDD" response.xml >/dev/null 2>&1
+[ $? -ne 0 ] && echo "error: either no instance or no FQDD found! Only looking for NIC in a slot." && exit 1
+
+fqdds=$( grep "FQDD" response.xml | cut -d'>' -f2 | cut -d'<' -f1 )
+fail=0
+
+## Get InstanceID from BootSourceSetting corresponding to found FQDDs
+
+echo -n >tmpfile
+
+for item in ${fqdds}; do
+  wsl enum DCIM_BootSourceSetting -filter "select InstanceID from DCIM_BootSourceSetting where InstanceID like '%${item}%'"
+  grep -i instanceid response.xml >/dev/null 2>&1
+  [ $? -ne 0 ] && echo "warning: DCIM_BootSourceSetting for ${item} not found!" && fail=1 && continue
+  instanceid=$( grep "InstanceID" response.xml | cut -d'>' -f2 | cut -d'<' -f1 )
+  echo "source=${instanceid}" >>tmpfile
+  filterstr="${filterstr} -e ${item}"
+done
+
+[ ${fail} -ne 0 ] && echo "error: one or more operations failed!" && exit 1
+
+## Sort so that the sequence is from 1 to N
+
+cat tmpfile | sort >tmpfile2
+for item in `cat tmpfile2`; do
+  sourcearg="${sourcearg} ${item}"
+done
+
+## Get the rest of the boot source so the list is complete
+wsl enum DCIM_BootSourceSetting -filter "select * from DCIM_BootSourceSetting where BootSourceType='UEFI'"
+instanceid=$( grep "InstanceID" response.xml | cut -d'>' -f2 | cut -d'<' -f1 )
+others=$( grep "InstanceID" response.xml | cut -d'>' -f2 | cut -d'<' -f1 | grep -v ${filterstr} )
+
+for item in ${others}; do
+  sourcearg="${sourcearg} source=${item}"
+done
+
+echo "CAP: ${sourcearg}"
+exit 1
+
+## Set the boot order
+
+wsl invoke DCIM_BootConfigSetting ChangeBootOrderByInstanceID -filter "select * from DCIM_BootConfigSetting where InstanceID='UEFI'" ${sourcearg}
+grep -i returnvalue response.xml | grep '>0<' >/dev/null 2>&1
+[ $? -ne 0 ] && echo "error: ChangeBootOrderByInstanceID return value is not 0!" && exit 1
+
+## Enabled each boot source corresponding to FQDDs
+
+wsl invoke DCIM_BootConfigSetting ChangeBootSourceState -filter "select * from DCIM_BootConfigSetting where InstanceID='UEFI'" ${sourcearg} EnabledState=1
+grep -i returnvalue response.xml | grep '>0<' >/dev/null 2>&1
+[ $? -ne 0 ] && echo "error: ChangeBootSourceState return value is not 0!" && exit 1
+
+echo "NOTICE: The change will be applied at the next reboot."
+exit 0
+

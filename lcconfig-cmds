@@ -112,6 +112,12 @@ export vCommands=(
  "powermetric" "aggregate clear" "Clear power aggregate metric values" ""
       "wsl invoke Dell_PowerMetricService ControlMetrics MetricCollectionEnabled=XX"
 
+ "power" "cycle idrac" "Reset iDRAC" ""
+      "wsl invoke CIM_ComputerSystem RequestStateChange -filter \"select * from CIM_ComputerSystem where Name='systemmc'\" RequestedState=11"
+
+ "power" "cycle system" "Reset the System" ""
+      "wsl invoke CIM_ComputerSystem RequestStateChange -filter \"select * from CIM_ComputerSystem where Name='srv:system'\" RequestedState=11"
+
  "power" "on" "System On by name. ARGS: ComputerSystem.Name" ""
       "wsl enum CIM_ComputerSystem -mode epr -filter \"select * from CIM_ComputerSystem where Name like '%XX%'\" ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml system.xml ; wsl invoke CIM_PowerManagementService RequestPowerStateChange PowerState=2 ManagedElement=FILE:system.xml"
 
@@ -183,6 +189,9 @@ export vCommands=(
 
  "power" "redundancy none3" "set system power policy to No-Redundancy (ChangeAffectedElementsAssignedSequence)." ""
       "wsl enum Dell_ACRedundancySet -mode epr; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml acset.xml; wsl enum Dell_DCRedundancySet -mode epr; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml dcset.xml; wsl invoke Dell_PowerConfigSvc ChangeAffectedElementsAssignedSequence AssignedSequence=0 AssignedSequence=0 ManagedElements=FILE:acset.xml ManagedElements=FILE:dcset.xml"
+
+ "update" "firmware toavailable" "Update to 'available' firmware. (ARGS) InstanceID" ""
+      "wsl enum DCIM_SoftwareIdentity -filter \"select * from DCIM_SoftwareIdentity where InstanceID='XX'\" -mode epr ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml sid.xml ; wsl invoke DCIM_SoftwareInstallationService InstallFromSoftwareIdentity Target=FILE:sid.xml"
 
  "update" "firmware nfs" "(ARGS) InstanceID ShareIP Pathfilename Mountpoint" ""
       "wsl enum DCIM_SoftwareIdentity -filter \"select * from DCIM_SoftwareIdentity where InstanceID='XX'\" -mode epr ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml sid.xml ; wsl invoke DCIM_SoftwareInstallationService InstallFromURI URI='nfs://XX/XX;mountpoint=/XX' Target=FILE:sid.xml"

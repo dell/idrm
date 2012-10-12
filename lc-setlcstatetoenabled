@@ -1,0 +1,43 @@
+#!/bin/bash
+
+## First check if attributes are present
+
+attr="Lifecycle Controller State"
+wsl enum DCIM_LCEnumeration -filter "select * from DCIM_LCEnumeration where AttributeName like '${attr}'"
+grep "${attr}" response.xml >/dev/null 2>&1
+[ $? -ne 0 ] && echo "error: instance does not contain ${attr}!" && exit 1
+
+## Perform the set
+
+wsl invoke DCIM_LCService SetAttributes AttributeName="${attr}" AttributeValue="Enabled" 
+grep -i returnvalue response.xml | grep '>0<' >/dev/null 2>&1
+[ $? -ne 0 ] && echo "error: SetAttributes return value is not 0!" && exit 1
+
+## Commit the change to the target
+
+wsl invoke DCIM_LCService CreateConfigJob ScheduledStartTime="TIME_NOW"
+grep -i returnvalue response.xml | grep '>4096<' >/dev/null 2>&1
+[ $? -ne 0 ] && echo "error: CreateConfigJob return value is not 4096!" && exit 1
+
+## Get job information
+
+jobid=$( grep "InstanceID" response.xml | cut -d'>' -f2 | cut -d'<' -f1 )
+
+## Monitor job status until complete
+
+timeout=6
+waittime=10
+while [ ${timeout} -gt 0 ]; do
+  wsl get DCIM_LifecycleJob InstanceID="${jobid}"
+  [ ! -s response.xml ] && echo "error: get job instance is empty!" && exit 1
+  jobstatus=$( grep "JobStatus" response.xml | cut -d'>' -f2 | cut -d'<' -f1 )
+  echo "Job ${jobid} status is ${jobstatus}"
+  echo ${jobstatus} | grep -i "complete" >/dev/null && break
+  echo ${jobstatus} | grep -i "scheduled" >/dev/null && break
+  read -t ${waittime} -p "Pausing for ${waittime} seconds to recheck job status."
+  echo
+  timeout=$((timeout - 1))
+done
+
+exit 0
+

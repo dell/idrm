@@ -1,0 +1,212 @@
+#!/bin/bash
+# ###########################################################################
+# Copyright (c) 2011, Dell Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+#
+#    * Redistributions of source code must retain the above copyright
+#      notice, this list of conditions and the following disclaimer.
+#    * Redistributions in binary form must reproduce the above copyright
+#      notice, this list of conditions and the following disclaimer in the
+#      documentation and/or other materials provided with the distribution.
+#    * Neither the name of the Dell, Inc. nor the names of its contributors
+#      may be used to endorse or promote products derived from this software
+#      without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL Dell, Inc. BE LIABLE FOR ANY DIRECT,
+# INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+# HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+# STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+# IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+# ###########################################################################
+# Authors: Chris A. Poblete
+# Version: 1.0.0
+# ###########################################################################
+
+MYNAME=`basename $0`
+MYPATH=${0%/*}
+STAT=0
+
+MYVERSION="0.1.0"
+MYTITLE="Dell Enterprise REpository Commandline"
+
+ftpsource="ftp.dell.com"
+ftpuri="ftp://${ftpsource}"
+catname="Catalog.xml"
+catnameutf8="${catname}utf8.xml"
+catdownload="${catname}.gz"
+
+usage() {
+  cat <<EOF
+${MYTITLE}, version ${MYVERSION}
+
+USAGE: $MYNAME COMMAND [PARAMS...]
+
+COMMAND:
+ catalog                       Fetch the catalog file from $ftpuri
+ query MODEL [MODEL ...]       Get a list of packages for system model(s)
+ get PACKAGE [PACKAGE ...]     Get the package(s) from ftp.dell.com
+ id PACKAGE [PACKAGE ...]      Print component ID(s)
+ pull MODEL                    Get all packages for the system model
+
+This tool requires access to "$ftpsource". Check firewall and proxy settings
+for proper access. 
+
+Define environment variable "DROUTPUTDIR" to direct where to put downloaded
+files. The default is current directory. For example:
+$ DROUTPUTDIR=/publicnfs $MYNAME pull R610
+
+EOF
+  exit 1
+}
+
+REQ=1
+fCheckReqsOrUsage() {
+  name="$1"
+  which $1 2>/dev/null >/dev/null
+  [ $? -ne 0 ] && echo -e "Failed to detect ${name}!!! This is a runtime requirement, verify installation and try again.\n" && REQ=0
+}
+fCheckReqsOrUsage wget
+fCheckReqsOrUsage gunzip
+fCheckReqsOrUsage iconv
+fCheckReqsOrUsage unzip
+[ ${REQ} -ne 1 ] && usage
+
+fCatalog() {
+  echo -en "Fetching ${catdownload} = "
+  /bin/rm -f ${catdownload}
+  wget --quiet "${ftpuri}/catalog/${catdownload}"
+  if [ $? -eq 0 ]; then
+    echo "ok"
+    gunzip -fv ${catdownload}
+  else
+    echo "errors!"
+  fi
+}
+
+fQuery() {
+  [ -z "${INTRA}" ] && echo "Querying the catalog may take several minutes..."
+  iconv -f UTF-16 -t UTF-8 ${catname} > ${catnameutf8}
+  for item in "$@"; do
+    echo "Package for $item"
+    flag=0
+    while read -e line ; do
+      case "${flag}" in
+        0) 
+          echo "${line}" | grep -i "Model" | grep -i "systemid" >/dev/null
+          [ $? -eq 0 ] && flag=1
+          ;;
+        1) flag=0
+          echo "${line}" | grep ">${item}<" >/dev/null
+          [ $? -eq 0 ] && flag=2
+          ;;
+        2)
+          echo "${line}" | grep -i "OperatingSystem" >/dev/null
+          [ $? -eq 0 ] && flag=3
+          ;;
+        3) flag=0
+          echo "${line}" | grep -i "Microsoft Windows" >/dev/null
+          [ $? -eq 0 ] && flag=4
+          ;;
+        4) 
+          if [ ` echo "${line}" | grep -i "package" | grep -i "path" >/dev/null ; echo $? | grep 0 ` ]; then
+            ## skip packages that could not be updated through wsman interface
+            if [ ` echo "${line}" | grep -iv "video" | grep -iv "tape" | grep -iv "drive" >/dev/null ; echo $? | grep 0 ` ]; then
+              echo -en "  "
+              echo "${line}" | cut -d'=' -f2 | cut -d'"' -f2
+            fi
+          elif [ ` echo "${line}" | grep -i "softwarebundle" >/dev/null ; echo $? | grep 0 ` ]; then
+            break
+          fi
+          ;;
+      esac
+    done < ${catnameutf8}
+  done
+}
+
+fGetID() {
+  for item in "$@"; do
+    /bin/rm -f package.xml*
+    [ -z "${INTRA}" ] && echo -en "${item} = "
+    [ ! -f ${item} ] && echo "can't find file" && continue
+    unzip -q ${item} package.xml
+    [ ! -f ${item} ] && echo "can't extract package.xml" && continue
+    iconv -f UTF-16 -t UTF-8 package.xml > package.xmlutf8.xml
+    id=$(grep 'Device componentID' package.xmlutf8.xml | cut -d'"' -f2 | sed ':a;N;$!ba;s/\n/ /g')
+    echo -n "${id}"
+  done
+  echo ""
+}
+
+fPull() {
+  echo "Querying the catalog may take several minutes..."
+  INTRA=1
+  fQuery $1 > tmpfile
+  tail -n +2 tmpfile > tmpfile2
+  declare -a mylist
+  counter=0
+  while read -e line ; do
+    mylist[${counter}]=${line}
+    counter=$((counter+1)) 
+  done < tmpfile2
+  /bin/rm -f tmpfile*
+  fGet ${mylist[@]}
+}
+
+[ ! -z "${DROUTPUTDIR}" ] && optoutdir="-P ${DROUTPUTDIR}"
+
+fGet() {
+  [ -z "${INTRA}" ] && echo "Querying the catalog may take several minutes..."
+  iconv -f UTF-16 -t UTF-8 ${catname} > ${catnameutf8}
+  for item in "$@"; do
+    srcname=$(cat "${catnameutf8}" | grep -i "softwarecomponent" | grep "${item}" | awk -F"ath=" '{print $2}' | cut -d'"' -f2)
+    if [ ! -z "${srcname}" ]; then
+      justname=$(basename ${srcname})
+      echo -en "Fetching ${justname} = "
+      /bin/rm -f ${justname}
+      wget ${optoutdir} -N --quiet "${ftpuri}/${srcname}"
+      if [ $? -eq 0 ]; then
+        INTRA=1
+        fGetID ${justname}
+      else
+        echo "errors!"
+      fi
+    fi
+  done
+}
+
+[ $# -lt 1 ] && usage
+CMD="$1"; shift
+case "${CMD}" in
+  c|catalog)
+    fCatalog 
+    ;;
+  i|id)
+    fGetID "$@"
+    ;;
+  q|query)
+    fQuery "$@"
+    ;;
+  g|get)
+    fGet "$@"
+    ;;
+  p|pull)
+    fPull "$@"
+    ;;
+  *)
+    echo "Unknown command: ${CMD}" ; usage
+    ;;
+esac
+
+exit ${STAT}
+
+
