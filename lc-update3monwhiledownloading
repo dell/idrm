@@ -32,14 +32,22 @@
 # Version: 1.0.0
 # ###########################################################################
 
+MYNAME=`basename $0`
+MYPATH=${0%/*}
+
+# source function library
+. wsl-functions
+
 export IPINTERACTIVE=0
 export WSAUTOMATED=1
 
 JOBSLISTFILE="updatejobs"
 
-[ ! -z "$1" ] && echo $1 | grep -e "^-" -e "^help$" >/dev/null && echo -e "USAGE: $0 [JOBS_INFILE]\n" && exit 1
+[ ! -z "$1" ] && echo $1 | grep -e "^-" -e "^help$" >/dev/null && echo -e "USAGE: ${MYNAME} [JOBS_INFILE]\n" && exit 1
 
-[ ! -z "$1" ] && JOBLISTFILE=$1
+[ ! -z "$1" ] && JOBSLISTFILE=$1
+JOBSLISTFILE="${WSENDPOINT}-${JOBSLISTFILE}"
+
 [ ! -f ${JOBSLISTFILE} ] && "error: can't find ${JOBSLISTFILE} file." && exit 1
 
 for item in `cat ${JOBSLISTFILE}`; do
@@ -51,18 +59,25 @@ jjlist=$(echo ${jlist} | head -c -3)
 
 while true; do
   [ -e "stop" ] && break
-  tpause=10
-  echo "wsl enum DCIM_LifecycleJob -filter \"select JobStatus from DCIM_LifecycleJob where ${jjlist}\""
-  wsl enum DCIM_LifecycleJob -filter "select JobStatus from DCIM_LifecycleJob where ${jjlist}"
-  if [ -s response.xml ]; then
-    grep "JobStatus" response.xml | cut -d'>' -f2 | cut -d'<' -f1 | grep -ie "downloading" -ie "new" >/dev/null
-    [ $? -ne 0 ] && echo -e "\nNo more downloading status." && break
+  export tpause=60
+  echo    "wsl enum DCIM_LifecycleJob -filter \"select JobStatus from DCIM_LifecycleJob where ${jjlist}\""
+  bash -c "wsl enum DCIM_LifecycleJob -filter \"select JobStatus from DCIM_LifecycleJob where ${jjlist}\""
+  if [ -s ${RETURNFILE} ]; then
+    grep -i fault ${RETURNFILE} >/dev/null
+    if [ $? -eq 0 ]; then
+      export tpause=180
+    else
+      grep "JobStatus" ${RETURNFILE} | cut -d'>' -f2 | cut -d'<' -f1 | grep -ie "downloading" -ie "new" >/dev/null
+      [ $? -ne 0 ] && echo -e "\nNo more downloading status." && break
+    fi
   else
     echo -e "\nNo response from iDRAC." && break
-    tpause=20
+    export tpause=180
   fi
   read -t ${tpause} -p "Pause for ${tpause} seconds, ctrl-c to stop."
   echo
 done
+
+grep "JobStatus" ${RETURNFILE} | cut -d'>' -f2 | cut -d'<' -f1 | grep -ie "failed" -ie "new" >/dev/null && exit 1
 
 exit 0

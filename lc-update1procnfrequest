@@ -43,10 +43,33 @@ export WSAUTOMATED=2
 
 UPDATELISTFILE="updatelist"
 
-[ ! -z "$1" ] && echo $1 | grep -e "^-" -e "^help$" >/dev/null && echo -e "USAGE: ${MYNAME }[LIST_OUTFILE]\n" && exit 1
+usage() {
+  cat <<EOF
+USAGE: ${MYNAME} NFREQUEST_FILE [LIST_OUTFILE]
 
-[ ! -z "$1" ] && UPDATELISTFILE=$1
+The argument NFREQUEST_FILE is a file that contains a list of component name
+and component Windows DUP file pair. The component name must be descriptive.
+The pair is separated by an equal character with no spaces between values.
+
+An example contents of the file:
+
+bios=R715_BIOS_8NCP3_WN32_2.9.0.EXE
+lifecycle controller=LC_APP_WIN_R296663.EXE
+
+EOF
+  exit 1
+}
+
+[ ! -z "$1" ] && echo $1 | grep -e "^-" -e "^help$" >/dev/null && usage
+[ $# -lt 1 ] && usage
+
+export INPUTFILE=$1
+[ ! -z "$2" ] && UPDATELISTFILE=$2
 UPDATELISTFILE="${WSENDPOINT}-${UPDATELISTFILE}"
+MYCATALOG="${WSENDPOINT}-mycatalog.ini"
+
+echo "### This is an auto-generated file" >${UPDATELISTFILE}
+echo "### This is an auto-generated file" >${MYCATALOG}
 
 echo "wsl enum DCIM_SoftwareIdentity -filter \"select * from DCIM_SoftwareIdentity where Status='Installed'\""
 wsl enum DCIM_SoftwareIdentity -filter "select * from DCIM_SoftwareIdentity where Status='Installed'"
@@ -54,10 +77,41 @@ if [ ! -s ${RETURNFILE} ]; then
   echo -e "\nERROR: empty response file\n"
   exit 1
 else
-  echo "## List of InstanceID, assign DUP file to each to be used for update. See ${UPDATELISTFILE} for descriptions." >${UPDATELISTFILE}
-  cat ${RETURNFILE} | grep InstanceID | cut -d'>' -f2 | cut -d'<' -f1 | sed 's/$/=/' >>${UPDATELISTFILE}
-  /bin/cp -f ${RETURNFILE} ${UPDATELISTFILE}
-  echo "list of InstanceID saved to ${UPDATELISTFILE}"
+  echo -e "\nCreating internal catalog..."
+  while read -e item ; do
+    echo ${item} | grep ':ComponentID>' >/dev/null && export cid=$(echo ${item} | cut -d'>' -f2 | cut -d'<' -f1) && continue
+    echo ${item} | grep ':ElementName>' >/dev/null && eln=$(echo ${item} | cut -d'>' -f2 | cut -d'<' -f1) && continue
+    echo ${item} | grep ':InstanceID>' >/dev/null && iid=$(echo ${item} | cut -d'>' -f2 | cut -d'<' -f1) && continue
+    echo ${item} | grep ':VersionString>' >/dev/null && ver=$(echo ${item} | cut -d'>' -f2 | cut -d'<' -f1) && continue
+    if [ ! -z ${ver} ]; then
+      echo "${cid}=${ver}=${iid}=${eln}" >> ${MYCATALOG}
+      unset cid eln iid ver
+    fi
+  done < ${RETURNFILE}
+
+  echo -e "\nGenerating the update list..."
+  while read -e item ; do
+    echo ${item} | grep "^#" >/dev/null && continue
+    name=$(echo ${item} | cut -d'=' -f1)
+    file=$(echo ${item} | cut -d'=' -f2)
+    line=$( grep -i -m 1 "${name}" ${MYCATALOG} )
+    cid=$( echo ${line} | cut -d'=' -f1 )
+    ver=$( echo ${line} | cut -d'=' -f2 )
+    iid=$( echo ${line} | cut -d'=' -f3 )
+    eln=$( echo ${line} | cut -d'=' -f4 )
+    echo "  ${eln}, ${cid}, ${ver}  ==>  ${file}"
+    echo "## ${eln}, ${cid}, ${ver}" >> ${UPDATELISTFILE}
+    echo "${iid}=${file}" >> ${UPDATELISTFILE} 
+  done < ${INPUTFILE}
+ 
+  cat <<EOF
+
+IMPORTANT: 
+Review the information above. Check that the DUP files you provided is 
+applicable to the target system. Once verified, proceed to the next step 
+using the file "${UPDATELISTFILE}".
+
+EOF
 fi
 
 exit 0

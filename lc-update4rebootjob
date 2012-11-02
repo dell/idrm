@@ -32,23 +32,31 @@
 # Version: 1.0.0
 # ###########################################################################
 
+MYNAME=`basename $0`
+MYPATH=${0%/*}
+
+# source function library
+. wsl-functions
+
 export IPINTERACTIVE=0
 export WSAUTOMATED=1
 
 JOBSLISTFILE="updatejobs"
 
-[ ! -z "$1" ] && echo $1 | grep -e "^-" -e "^help$" >/dev/null && echo -e "USAGE: $0 [JOBS_INFILE]\n" && exit 1
+[ ! -z "$1" ] && echo $1 | grep -e "^-" -e "^help$" >/dev/null && echo -e "USAGE: ${MYNAME} [JOBS_INFILE]\n" && exit 1
 
-[ ! -z "$1" ] && JOBLISTFILE=$1
+[ ! -z "$1" ] && JOBSLISTFILE=$1
+JOBSLISTFILE="${WSENDPOINT}-${JOBSLISTFILE}"
+
 [ ! -f ${JOBSLISTFILE} ] && "ERROR: can't find ${JOBSLISTFILE} file." && exit 1
 
 echo "wsl invoke DCIM_SoftwareInstallationService CreateRebootJob RebootJobType=3"
 wsl invoke DCIM_SoftwareInstallationService CreateRebootJob RebootJobType=3
-if [ ! -s response.xml ]; then
+if [ ! -s ${RETURNFILE} ]; then
   echo -e "\nERROR: empty response file\n"
   exit 1
 else
-  cat response.xml | grep InstanceID | cut -d'>' -f2 | cut -d'<' -f1 >>${JOBSLISTFILE}
+  cat ${RETURNFILE} | grep InstanceID | cut -d'>' -f2 | cut -d'<' -f1 >>${JOBSLISTFILE}
   echo "reboot job added to ${JOBSLISTFILE}" 
 fi
 

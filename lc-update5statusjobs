@@ -32,14 +32,22 @@
 # Version: 1.0.0
 # ###########################################################################
 
+MYNAME=`basename $0`
+MYPATH=${0%/*}
+
+# source function library
+. wsl-functions
+
 export IPINTERACTIVE=0
 export WSAUTOMATED=1
 
 JOBSLISTFILE="updatejobs"
 
-[ ! -z "$1" ] && echo $1 | grep -e "^-" -e "^help$" >/dev/null && echo -e "USAGE: $0 [JOBS_INFILE]\n" && exit 1
+[ ! -z "$1" ] && echo $1 | grep -e "^-" -e "^help$" >/dev/null && echo -e "USAGE: ${MYNAME} [JOBS_INFILE]\n" && exit 1
 
-[ ! -z "$1" ] && JOBLISTFILE=$1
+[ ! -z "$1" ] && JOBSLISTFILE=$1
+JOBSLISTFILE="${WSENDPOINT}-${JOBSLISTFILE}"
+
 [ ! -f ${JOBSLISTFILE} ] && "ERROR: can't find ${JOBSLISTFILE} file." && exit 1
 
 for item in `cat ${JOBSLISTFILE}`; do
@@ -51,7 +59,7 @@ jjlist=$(echo ${jlist} | head -c -3)
 
 echo "wsl enum DCIM_LifecycleJob -filter \"select JobStatus from DCIM_LifecycleJob where ${jjlist}\""
 wsl enum DCIM_LifecycleJob -filter "select JobStatus from DCIM_LifecycleJob where ${jjlist}"
-[ ! -s response.xml ] && echo -e "\nWARNING: empty response file\n" && continue
+[ ! -s ${RETURNFILE} ] && echo -e "\nWARNING: empty response file\n" && continue
 
 
 exit 0

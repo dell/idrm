@@ -33,10 +33,12 @@
 # ###########################################################################
 
 maxrepeat=1024
+tout=60
+[ ! -z "$1" ] && tout=$1
 
 while : ; do
   wsl invoke DCIM_LCService GetRSStatus
-  read -t 10 -p "Pause for 10 seconds and repeat. Press Ctrl-C to stop"
+  read -t ${tout} -p "Pause for ${tout} seconds and repeat. Press Ctrl-C to stop"
   echo
   [ ${maxrepeat} -eq 0 ] && break
   maxrepeat=$((maxrepeat - 1))

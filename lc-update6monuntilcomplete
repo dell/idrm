@@ -32,18 +32,26 @@
 # Version: 1.0.0
 # ###########################################################################
 
+MYNAME=`basename $0`
+MYPATH=${0%/*}
+
+# source function library
+. wsl-functions
+
 export OUTLEVEL=1
 export IPINTERACTIVE=0
 export WSAUTOMATED=1
 
-JOBLISTFILE="updatejobs"
+JOBSLISTFILE="updatejobs"
 
-[ ! -z "$1" ] && echo $1 | grep -e "^-" -e "^help$" >/dev/null && echo -e "USAGE: $0 [JOBS_INFILE]\n" && exit 1
+[ ! -z "$1" ] && echo $1 | grep -e "^-" -e "^help$" >/dev/null && echo -e "USAGE: ${MYNAME} [JOBS_INFILE]\n" && exit 1
 
-[ ! -z "$1" ] && JOBLISTFILE=$1
-[ ! -f ${JOBLISTFILE} ] && "ERROR: can't find ${JOBLISTFILE} file." && exit 1
+[ ! -z "$1" ] && JOBSLISTFILE=$1
+JOBSLISTFILE="${WSENDPOINT}-${JOBSLISTFILE}"
 
-for item in `cat ${JOBLISTFILE}`; do
+[ ! -f ${JOBSLISTFILE} ] && "ERROR: can't find ${JOBSLISTFILE} file." && exit 1
+
+for item in `cat ${JOBSLISTFILE}`; do
   echo ${item} | grep "^#" && continue
   item2=$(echo ${item} | sed 's/"//g')
   jlist="${jlist} InstanceID='${item2}' or"
@@ -53,20 +61,25 @@ jjlist=$(echo ${jlist} | head -c -3)
 retry=18
 while true; do
   [ -e "stop" ] && break
-  tpause=10
-  echo "wsl enum DCIM_LifecycleJob -filter \"select JobStatus from DCIM_LifecycleJob where ${jjlist}\""
-  wsl enum DCIM_LifecycleJob -filter "select JobStatus from DCIM_LifecycleJob where ${jjlist}"
-  if [ -s response.xml ]; then
-    grep "JobStatus" response.xml | cut -d'>' -f2 | cut -d'<' -f1 | grep -vi "complete" >/dev/null
-    [ $? -ne 0 ] && echo -e "\nAll status are complete." && break
+  export tpause=60
+  echo    "wsl enum DCIM_LifecycleJob -filter \"select JobStatus from DCIM_LifecycleJob where ${jjlist}\""
+  bash -c "wsl enum DCIM_LifecycleJob -filter \"select JobStatus from DCIM_LifecycleJob where ${jjlist}\""
+  if [ -s ${RETURNFILE} ]; then
+    grep -i fault ${RETURNFILE} >/dev/null
+    if [ $? -eq 0 ]; then 
+      export tpause=180
+    else
+      grep "JobStatus" ${RETURNFILE} | cut -d'>' -f2 | cut -d'<' -f1 | grep -vi "complete" >/dev/null
+      [ $? -ne 0 ] && echo -e "\nAll status are complete." && break
+    fi
   else
     [ ${retry} -eq 0 ] && echo -e "\nERROR: iDRAC no response retry limit reached." && exit 1
     echo "no response, iDRAC may be resetting, retry count ${retry}."
     retry=$((retry - 1))
-    tpause=20
+    export tpause=180
   fi
   echo "wsl invoke DCIM_LCService GetRSStatus"
-  wsl invoke DCIM_LCService GetRSStatus 
+  bash -c "wsl invoke DCIM_LCService GetRSStatus"
   read -t ${tpause} -p "Pause for ${tpause} seconds, ctrl-c to stop."
   echo
 done

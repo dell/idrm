@@ -180,7 +180,7 @@ for (( index = 0; index < ${count}; index++ )); do
         ecmd=$(echo "${ecmd}" | sed "s/XX/${item}/")
       done
     else
-      ecmd=$(echo "${ecmd}" | sed "s/^%%//")
+      ecmd="`echo "${ecmd}" | sed "s/^%%//"` ${uargs[*]}"
     fi
     fGetTarget
     export WSAUTOMATED=1

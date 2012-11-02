@@ -32,14 +32,22 @@
 # Version: 1.0.0
 # ###########################################################################
 
+MYNAME=`basename $0`
+MYPATH=${0%/*}
+
+# source function library
+. wsl-functions
+
 export IPINTERACTIVE=0
 export WSAUTOMATED=1
 
 JOBSLISTFILE="updatejobs"
 
-[ ! -z "$1" ] && echo $1 | grep -e "^-" -e "^help$" >/dev/null && echo -e "USAGE: $0 [JOBS_INFILE]\n" && exit 1
+[ ! -z "$1" ] && echo $1 | grep -e "^-" -e "^help$" >/dev/null && echo -e "USAGE: ${MYNAME} [JOBS_INFILE]\n" && exit 1
 
-[ ! -z "$1" ] && JOBLISTFILE=$1
+[ ! -z "$1" ] && JOBSLISTFILE=$1
+JOBSLISTFILE="${WSENDPOINT}-${JOBSLISTFILE}"
+
 [ ! -f ${JOBSLISTFILE} ] && "error: can't find ${JOBSLISTFILE} file." && exit 1
 
 for item in `cat ${JOBSLISTFILE}`; do
@@ -47,7 +55,7 @@ for item in `cat ${JOBSLISTFILE}`; do
   item2=$(echo ${item} | sed 's/"//g')
   echo "wsl invoke DCIM_JobService DeleteJobQueue JobID=${item2}"
   wsl invoke DCIM_JobService DeleteJobQueue JobID=${item2}
-  [ ! -s response.xml ] && echo "WARNING: empty response file\n"
+  [ ! -s ${RETURNFILE} ] && echo "WARNING: empty response file\n"
 done
 
 exit 0

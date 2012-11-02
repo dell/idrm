@@ -35,11 +35,14 @@
 MYNAME=`basename $0`
 MYPATH=${0%/*}
 
+# source function library
+. wsl-functions
+
 export IPINTERACTIVE=0
 export WSAUTOMATED=2
 
 UPDATELISTFILE="updatelist"
-JOBLISTFILE="updatejobs"
+JOBSLISTFILE="updatejobs"
 
 usage() {
   cat <<EOF
@@ -62,12 +65,15 @@ NFSIP=$1; shift
 NFSSHARE=$1; shift
 DUPDIR=$1; shift
 [ ! -z "$1" ] && UPDATELISTFILE=$1 && shift
-[ ! -z "$1" ] && JOBLISTFILE=$1 && shift
+[ ! -z "$1" ] && JOBSLISTFILE=$1 && shift
+
+UPDATELISTFILE="${WSENDPOINT}-${UPDATELISTFILE}"
+JOBSLISTFILE="${WSENDPOINT}-${JOBSLISTFILE}"
 
 [ ! -f ${UPDATELISTFILE} ] && "ERROR: can't find ${UPDATELISTFILE} file." && exit 1
-cat /dev/null >${JOBLISTFILE}
+cat /dev/null >${JOBSLISTFILE}
 
-echo "${DUPDIR}" | grep -v '/$' >/dev/null 2>&1 && DUPDIR=$( echo "${DUPDIR}" | sed 's/$/\//' )
+echo "${DUPDIR}" | grep -v '/$' >/dev/null 2>&1 && DUPDIR=$( echo "${DUPDIR}" | sed 's/$/\\\//' )
 
 while read -e item ; do
   echo ${item} | grep "^#" >/dev/null && continue
@@ -77,10 +83,10 @@ while read -e item ; do
   [ -z "${dupfile}" ] && continue
   echo "Processing ${instanceid}... "
   lcconfig update firmware nfs ${instanceid} ${NFSIP} ${DUPDIR}${dupfile} ${NFSSHARE} 
-  [ ! -s response.xml ] && echo -e "\nWARNING: empty response file\n" && continue
-  cat response.xml | grep "Selector" | grep "InstanceID" | cut -d'>' -f2 | cut -d'<' -f1 >>${JOBLISTFILE}
+  [ ! -s ${RETURNFILE} ] && echo -e "\nWARNING: empty response file\n" && continue
+  cat ${RETURNFILE} | grep "Selector" | grep "InstanceID" | cut -d'>' -f2 | cut -d'<' -f1 >>${JOBSLISTFILE}
 done < ${UPDATELISTFILE}
 
-echo "jobs saved to ${JOBLISTFILE}"
+echo "jobs saved to ${JOBSLISTFILE}"
 exit 0
 

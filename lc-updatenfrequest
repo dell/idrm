@@ -1,0 +1,106 @@
+#!/bin/bash
+# ###########################################################################
+# Copyright (c) 2011, Dell Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+#
+#    * Redistributions of source code must retain the above copyright
+#      notice, this list of conditions and the following disclaimer.
+#    * Redistributions in binary form must reproduce the above copyright
+#      notice, this list of conditions and the following disclaimer in the
+#      documentation and/or other materials provided with the distribution.
+#    * Neither the name of Dell Inc. nor the names of its contributors
+#      may be used to endorse or promote products derived from this software
+#      without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL DELL INC. BE LIABLE FOR ANY DIRECT,
+# INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+# HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+# STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+# IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+# ###########################################################################
+# Authors: Chris A. Poblete
+# Version: 1.0.0
+# ###########################################################################
+
+MYNAME=`basename $0`
+MYPATH=${0%/*}
+
+# source function library
+WSLNOINIT=1
+. wsl-functions
+
+UPDATELISTFILE="updatelist"
+
+usage() {
+  $WSCOLORERR
+  cat <<EOF
+Executes firmware update workflow.
+USAGE: ${MYNAME} iDRAC_INFO SHARE_INFO NFREQUEST_FILE [fg]
+
+iDRAC_INFO requires the following arguments:
+  IPADDRESS USERNAME PASSCODE
+
+SHARE_INFO shall be one of the following:
+  cifs SHAREIPADDRESS SHAREDIR SHARENAME USERNAME PASSCODE
+  nfs SHAREIPADDRESS SHAREDIR SHARENAME x x
+  ftp SHAREIPADDRESS SHAREDIR x x x
+  http SHAREIPADDRESS SHAREDIR x x x
+  ftp SHAREIPADDRESS x x x x
+
+For providing the arguments, replace the text in all-caps with actual values.
+Otherwise, enter the text as is. SHAREDIR is the directory where the Windows
+DUP files are located. If files are located in the root share, specify a dot
+character. USERNAME in a domain, use the format DOMAIN\\USER.
+
+NFREQUEST_FILE is a file that contains a list of component name and component
+Windows DUP file pair. The component name must be descriptive. The pair is
+separated by an equal character with no spaces between values.
+
+An example contents of the file:
+  bios=R715_BIOS_8NCP3_WN32_2.9.0.EXE
+  lifecycle controller=LC_APP_WIN_R296663.EXE
+
+This script creates a working directory based on the iDRAC ipaddress and
+the runtim process ID. It calls another script that process the entire 
+update workflow and runs it in the background. Provide the "fg" argument
+at the end to run in the foreground. A runtime log file is created in either
+case.
+
+Example run:
+  $ ${MYNAME} 192.168.154.175 admin admin12345 cifs 192.168.134.34 \\
+    R715 pubshare domain\\\\pubuser pubuser12345 R715-update.ini
+
+EOF
+  $WSCOLORNORM
+  exit 1
+}
+
+[ ! -z "$1" ] && echo $1 | grep -e "^-" -e "^help$" >/dev/null && usage
+[ $# -lt 10 ] && usage
+
+WSENDPOINT=$1
+INPUTFILE=${10}
+[ "${11}" = "fg" ] && fg=1
+
+WORKDIR="${WSENDPOINT}-$$"
+LOGFILE="${WORKDIR}-runlog.txt"
+/bin/mkdir -p ${WORKDIR} || fMessageThenExit "ERROR: failed to create working directory!" 1 
+/bin/cp ${INPUTFILE} ${WORKDIR}
+if [ "${fg}" == "1" ]; then
+  (time lc-update0nfrequest ${WORKDIR} $@ 2>&1)|tee ${LOGFILE}
+else
+  time lc-update0nfrequest ${WORKDIR} $@ >${LOGFILE} 2>&1 &
+fi
+echo -e "\nOutput directory is ${WORKDIR}, monitor output in file ${LOGFILE}\n"
+
+exit 0

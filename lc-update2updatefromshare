@@ -41,28 +41,79 @@ MYPATH=${0%/*}
 export IPINTERACTIVE=0
 export WSAUTOMATED=2
 
-UPDATELISTFILE="updateavailablelist"
+UPDATELISTFILE="updatelist"
 JOBSLISTFILE="updatejobs"
 
-[ ! -z "$1" ] && echo $1 | grep -e "^-" -e "^help$" >/dev/null && echo -e "USAGE: ${MYNAME} [LIST_INFILE [JOBS_OUTFILE]]\n" && exit 1
+usage() {
+  cat <<EOF
 
-[ ! -z "$1" ] && UPDATELISTFILE=$1
-[ ! -z "$2" ] && JOBSLISTFILE=$2
+USAGE: ${MYNAME} SHARE_INFO [LIST_INFILE [JOBS_OUTFILE]]
 
+For SHARE_INFO, provide one of the following:
+  cifs SHAREIPADDRESS SHAREDIR SHARENAME USERNAME PASSCODE
+  nfs SHAREIPADDRESS SHAREDIR SHARENAME x x
+  ftp SHAREIPADDRESS SHAREDIR x x x
+  http SHAREIPADDRESS SHAREDIR x x x
+  ftp SHAREIPADDRESS x x x x
+
+For providing the arguments, replace the text in all-caps with actual values.
+Otherwise, enter the text as is. SHAREDIR is the directory where the Windows
+DUP files are located. If files are located in the root share, you can specify
+an empty value with double qoutes such as "" or a dot character.
+
+EOF
+  exit 1
+}
+
+[ $# -lt 6 ] && usage
+echo $1 | grep -e "^-" -e "^help$" >/dev/null && usage
+sharetype=$1; shift
+shareip=$1; shift
+sharedir=$1; shift
+sharename=$1; shift
+shareuser=$1; shift
+sharepass=$1; shift
+[ ! -z "$1" ] && UPDATELISTFILE=$1 && shift
+[ ! -z "$1" ] && JOBSLISTFILE=$1 && shift
+
+UPDATELISTFILE="${WSENDPOINT}-${UPDATELISTFILE}"
 JOBSLISTFILE="${WSENDPOINT}-${JOBSLISTFILE}"
 
 [ ! -f ${UPDATELISTFILE} ] && "ERROR: can't find ${UPDATELISTFILE} file." && exit 1
 cat /dev/null >${JOBSLISTFILE}
 
-[ ! -z "${DUPDIR}" ] && DUPDIR="${DUPDIR}\\/"
+if [ "${sharedir}" = "." ]; then
+  sharedir=""
+else
+  echo "${sharedir}" | grep -v '/$' >/dev/null 2>&1 && sharedir=$( echo "${sharedir}" | sed 's/$/\\\//' )
+fi
+
 while read -e item ; do
-  echo "${item}" | grep "^#" >/dev/null && continue
-  instanceid=$(echo ${item} | sed 's/"//g')
+  echo ${item} | grep "^#" >/dev/null && continue
+  item2=$(echo ${item} | sed 's/"//g')
+  instanceid=$(echo ${item2} | cut -d'=' -f1)
+  dupfile=$(echo ${item2} | cut -d'=' -f2)
+  [ -z "${dupfile}" ] && continue
   echo "Processing ${instanceid}... "
-  lcconfig update firmware toavailable ${instanceid} 
+  case "${sharetype}" in
+    cifs) 
+         lcconfig update firmware cifs ${instanceid} ${shareuser} ${sharepass} ${shareip} ${sharedir}${dupfile} ${sharename}
+         ;;
+    nfs) 
+         lcconfig update firmware nfs ${instanceid} ${shareip} ${sharedir}${dupfile} ${sharename}
+         ;;
+    http|ftp|tftp) 
+         lcconfig update firmware xtp ${instanceid} ${sharetype} ${shareip} ${sharedir}${dupfile}
+         ;;
+    * ) 
+         echo "ERROR: Unknown share type ${sharetype}!" 
+         exit 1
+         ;;
+  esac
   [ ! -s ${RETURNFILE} ] && echo -e "\nWARNING: empty response file\n" && continue
   cat ${RETURNFILE} | grep "Selector" | grep "InstanceID" | cut -d'>' -f2 | cut -d'<' -f1 >>${JOBSLISTFILE}
 done < ${UPDATELISTFILE}
 
 echo "jobs saved to ${JOBSLISTFILE}"
 exit 0
+

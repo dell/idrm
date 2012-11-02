@@ -197,7 +197,7 @@ export vCommands=(
       "wsl enum DCIM_SoftwareIdentity -filter \"select * from DCIM_SoftwareIdentity where InstanceID='XX'\" -mode epr ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml sid.xml ; wsl invoke DCIM_SoftwareInstallationService InstallFromURI URI='nfs://XX/XX;mountpoint=/XX' Target=FILE:sid.xml"
 
  "update" "firmware cifs" "(ARGS) InstanceID Username Passcode ShareIP Pathfilename Mountpoint" ""
-      "wsl enum DCIM_SoftwareIdentity -filter \"select * from DCIM_SoftwareIdentity where InstanceID='XX'\" -mode epr ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml sid.xml ; wsl invoke DCIM_SoftwareInstallationService InstallFromURI URI='cifs://XX/XX@XX/XX;mountpoint=XX' Target=FILE:sid.xml"
+      "wsl enum DCIM_SoftwareIdentity -filter \"select * from DCIM_SoftwareIdentity where InstanceID='XX'\" -mode epr ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml sid.xml ; wsl invoke DCIM_SoftwareInstallationService InstallFromURI URI='cifs://XX:XX@XX/XX;mountpoint=XX' Target=FILE:sid.xml"
 
  "update" "firmware xtp" "(ARGS) InstanceID TYPE{http|ftp|tftp} ShareIP Pathfilename" ""
       "wsl enum DCIM_SoftwareIdentity -filter \"select * from DCIM_SoftwareIdentity where InstanceID='XX'\" -mode epr ; grep -i 'Fault' response.xml >/dev/null && exit 1 ; mv response.xml sid.xml ; wsl invoke DCIM_SoftwareInstallationService InstallFromURI URI='XX://XX/XX' Target=FILE:sid.xml"
